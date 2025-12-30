@@ -310,7 +310,8 @@ ul.selection-tree ul.expanded {
     font-family: 'Consolas', monospace;
     font-size: 13px;
     color: var(--text);
-    padding-top: 10px;
+    padding-top: 5px;
+    padding-bottom: 5px;
 }
 
 .selection-item:hover {
