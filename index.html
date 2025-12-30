@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>File Tree & Bundle Generator</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+
+<div class="container">
+  <button id="theme-toggle" class="theme-btn" onclick="toggleTheme()" title="Переключить тему">
+    <i class="fa-solid fa-sun"></i>
+  </button>
+
+  <header>
+    <h1>🌲 File Tree Generator</h1>
+    <p>GitHub / Local &rarr; Visual Tree & Bundle</p>
+  </header>
+
+  <!-- 1. СЕКЦИЯ ВВОДА -->
+  <div class="card input-section">
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab('github')"><i class="fab fa-github"></i> GitHub Repo</button>
+      <button class="tab-btn" onclick="switchTab('local')"><i class="fa-regular fa-folder-open"></i> Локальная папка</button>
+    </div>
+
+    <div id="github-panel" class="panel active">
+      <div class="input-group">
+        <input type="text" id="repoUrl" placeholder="https://github.com/username/repo">
+        <input type="password" id="repoToken" placeholder="Token (опционально)">
+      </div>
+      <small>Токен нужен для приватных репо и увеличения лимитов API.</small>
+      <button class="action-btn" onclick="fetchGitHubRepo()">📥 Загрузить список файлов</button>
+    </div>
+
+    <div id="local-panel" class="panel">
+      <div class="upload-box">
+        <input type="file" id="folderInput" webkitdirectory directory multiple>
+        <div class="upload-label">
+          <i class="fa-solid fa-cloud-arrow-up"></i>
+          <span>Нажмите, чтобы выбрать папку</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. СЕКЦИЯ ВЫБОРА -->
+  <div id="selection-section" class="card hidden">
+    <div class="section-header">
+      <!-- СЧЕТЧИК ДОБАВЛЕН СЮДА -->
+      <h2>📂 Выберите файлы <span id="file-counter" class="counter-badge">0</span></h2>
+      <div class="global-actions">
+        <button onclick="toggleAll(true)" class="small-btn">Все</button>
+        <button onclick="toggleAll(false)" class="small-btn">Ничего</button>
+      </div>
+    </div>
+
+    <div id="extension-container" class="extension-bar hidden">
+      <span class="filter-label">Типы:</span>
+      <div id="extension-list" class="tags-wrapper"></div>
+    </div>
+
+    <div id="file-list" class="file-list-container"></div>
+
+    <button class="primary-btn" onclick="generateTree()">✨ Показать дерево (Визуально)</button>
+
+    <div style="margin-top: 15px; border-top: 1px solid var(--border); padding-top: 15px;">
+      <button class="primary-btn download-btn" onclick="downloadCombinedFile()">
+        <i class="fa-solid fa-file-arrow-down"></i> Скачать всё в один .txt
+      </button>
+      <div id="loading-status" class="status-bar hidden">
+        <i class="fa-solid fa-spinner fa-spin"></i>
+        <span id="loading-text">Загрузка файлов...</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. СЕКЦИЯ РЕЗУЛЬТАТА -->
+  <div id="result-section" class="card hidden">
+    <div class="section-header">
+      <h2>Результат</h2>
+      <div class="result-controls">
+        <select id="view-mode" onchange="renderCurrentView()" class="mode-select">
+          <option value="vertical">Vertical (Classic)</option>
+          <option value="ascii">ASCII (Readme.md)</option>
+        </select>
+        <button onclick="copyToClipboard()" class="small-btn"><i class="fa-regular fa-copy"></i> Copy</button>
+      </div>
+    </div>
+    <div id="tree-output-container" class="output-container"></div>
+  </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
