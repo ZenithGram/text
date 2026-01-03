@@ -367,7 +367,7 @@ async function downloadCombinedFile() {
   statusDiv.classList.remove('hidden');
 
   let outputContent = "PROJECT STRUCTURE:\n";
-  outputContent += "================================================================\n";
+  outputContent += "---";
   const treeObj = buildTreeObject(checkedFiles);
   outputContent += renderASCIIRecursive(treeObj);
   outputContent += "\n\n";
@@ -383,7 +383,7 @@ async function downloadCombinedFile() {
         if (res.ok) {
           const data = await res.json();
           const content = new TextDecoder().decode(Uint8Array.from(atob(data.content), c => c.charCodeAt(0)));
-          outputContent += `\n================================================================\nFILE: ${path}\n================================================================\n${content}\n`;
+          outputContent += `\n---\nFILE: ${path}\n---\n${content}\n`;
         } else {
           outputContent += `\n!!! FAILED TO FETCH: ${path} !!!\n`;
         }
