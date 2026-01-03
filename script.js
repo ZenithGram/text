@@ -424,7 +424,6 @@ async function downloadCombinedFile() {
     statusDiv.classList.remove('hidden');
 
     let outputContent = "PROJECT STRUCTURE:\n";
-    outputContent += "================================================================\n";
     const treeObj = buildTreeObject(checkedFiles);
     outputContent += renderASCIIRecursive(treeObj);
     outputContent += "\n\n";
