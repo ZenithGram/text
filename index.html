@@ -90,6 +90,37 @@
                     <i class="fa-solid fa-calculator"></i> Пересчитать
                 </button>
             </div>
+            <!-- ПАНЕЛЬ НАСТРОЕК ОПТИМИЗАЦИИ -->
+            <div class="optimization-panel">
+                <div class="opt-header">
+                    <i class="fa-solid fa-sliders"></i> Оптимизация
+                </div>
+
+                <div class="opt-controls">
+                    <!-- Опция: Удалить комментарии -->
+                    <label class="toggle-control">
+                        <input type="checkbox" id="opt-remove-comments">
+                        <span class="toggle-track">
+                <span class="toggle-indicator"></span>
+            </span>
+                        <span class="toggle-text">
+                <i class="fa-regular fa-comments"></i> Без комментариев
+            </span>
+                    </label>
+
+                    <!-- Опция: Удалить пустые строки -->
+                    <label class="toggle-control">
+                        <input type="checkbox" id="opt-remove-empty" checked>
+                        <span class="toggle-track">
+                <span class="toggle-indicator"></span>
+            </span>
+                        <span class="toggle-text">
+                <i class="fa-solid fa-align-justify"></i> Без пустых строк
+            </span>
+                    </label>
+                </div>
+            </div>
+
         </div>
 
         <button class="primary-btn download-btn" onclick="processFiles('download')">

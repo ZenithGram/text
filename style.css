@@ -480,3 +480,107 @@ input[type="checkbox"] {
     line-height: 1.3;
     margin: 0;
 }
+
+/* --- OPTIMIZATION PANEL STYLES --- */
+
+.optimization-panel {
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 15px;
+    margin: 10px 0 15px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.opt-header {
+    font-size: 11px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.opt-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    align-items: center;
+}
+
+/* Стили самого переключателя (Toggle) */
+.toggle-control {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    user-select: none;
+    transition: opacity 0.2s;
+}
+
+.toggle-control:hover {
+    opacity: 0.9;
+}
+
+/* Скрываем стандартный чекбокс */
+.toggle-control input {
+    display: none;
+}
+
+/* Дорожка переключателя */
+.toggle-track {
+    width: 40px;
+    height: 22px;
+    background-color: var(--card-bg); /* Цвет выключенного состояния */
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    position: relative;
+    transition: background-color 0.3s, border-color 0.3s;
+}
+
+/* Кругляшок (индикатор) */
+.toggle-indicator {
+    width: 16px;
+    height: 16px;
+    background-color: var(--text-muted);
+    border-radius: 50%;
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    transition: transform 0.3s cubic-bezier(0.4, 0.0, 0.2, 1), background-color 0.3s;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+
+/* Состояние: Включено (Checked) */
+.toggle-control input:checked + .toggle-track {
+    background-color: var(--success); /* Ваш зеленый цвет */
+    border-color: var(--success);
+}
+
+.toggle-control input:checked + .toggle-track .toggle-indicator {
+    transform: translateX(18px); /* Сдвиг вправо */
+    background-color: #fff;
+}
+
+/* Текст рядом с переключателем */
+.toggle-text {
+    font-size: 13px;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.toggle-text i {
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+/* Подсветка иконки при включении */
+.toggle-control input:checked ~ .toggle-text i {
+    color: var(--success); /* Или var(--text) если хотите белую */
+}

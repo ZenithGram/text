@@ -7,6 +7,15 @@ const IGNORED_FOLDERS = [
     'venv', 'env', '.mypy_cache', '.ds_store'
 ];
 
+// Добавьте в IGNORED_FOLDERS или сделайте массив IGNORED_FILES
+const IGNORED_FILES = [
+    'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml',
+    'composer.lock', 'Cargo.lock', '.DS_Store', 'thumbs.db'
+];
+
+// В функции createNode добавьте проверку:
+if (IGNORED_FILES.includes(name.toLowerCase())) isChecked = false;
+
 const ALLOWED_EXTENSIONS = [
     // Web & Scripting
     '.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs', '.vue', '.svelte',
@@ -439,16 +448,17 @@ async function processFiles(mode) {
         .map(cb => cb.dataset.path);
 
     if (checkedFiles.length === 0) return alert("Ничего не выбрано!");
+
     if (githubRepoMeta && checkedFiles.length > 50) {
         if (!confirm(`Выбрано ${checkedFiles.length} файлов. Это потребует времени для скачивания/анализа. Продолжить?`)) return;
     }
 
     const statusDiv = document.getElementById('loading-status');
     const statusText = document.getElementById('loading-text');
-
     const statTotalEl = document.getElementById('stat-total-lines');
     const statCodeEl = document.getElementById('stat-code-lines');
 
+    // Сброс счетчиков
     let totalLinesCount = 0;
     let codeLinesCount = 0;
     statTotalEl.innerText = '0';
@@ -457,10 +467,10 @@ async function processFiles(mode) {
     statusDiv.classList.remove('hidden');
 
     let outputContent = "";
-    const treeObj = buildTreeObject(checkedFiles);
-    const treeString = renderASCIIRecursive(treeObj);
-
+    // Генерируем дерево только для режима скачивания
     if (mode === 'download') {
+        const treeObj = buildTreeObject(checkedFiles);
+        const treeString = renderASCIIRecursive(treeObj);
         outputContent += "PROJECT DIRECTORY STRUCTURE:\n";
         outputContent += treeString;
         outputContent += "\n\n";
@@ -469,13 +479,13 @@ async function processFiles(mode) {
     try {
         for (let i = 0; i < checkedFiles.length; i++) {
             const path = checkedFiles[i];
-
             const actionText = mode === 'download' ? "Скачивание" : "Анализ";
             statusText.innerText = `${actionText}: ${i + 1}/${checkedFiles.length} (${path})`;
 
             let content = "";
             let fetchSuccess = false;
 
+            // Логика получения файла (GitHub или Local)
             if (githubRepoMeta) {
                 const url = `https://api.github.com/repos/${githubRepoMeta.owner}/${githubRepoMeta.repo}/contents/${path}?ref=${githubRepoMeta.branch}`;
                 const headers = { 'Accept': 'application/vnd.github.v3+json' };
@@ -484,10 +494,10 @@ async function processFiles(mode) {
                 }
 
                 const res = await fetch(url, { headers });
-
                 if (res.ok) {
                     const data = await res.json();
                     if (data.encoding === 'base64') {
+                        // Исправление для корректного декодирования UTF-8
                         content = new TextDecoder().decode(Uint8Array.from(atob(data.content), c => c.charCodeAt(0)));
                     } else {
                         content = atob(data.content);
@@ -495,7 +505,6 @@ async function processFiles(mode) {
                     fetchSuccess = true;
                 } else {
                     console.error(`Ошибка при загрузке ${path}: ${res.status}`);
-                    // ОБНОВЛЕННАЯ ЧАСТЬ НИЖЕ
                     if (res.status === 403 && !githubRepoMeta.token) {
                         const tokenUrl = "https://github.com/settings/tokens";
                         alert(`Достигнут лимит скачивания файлов (API Rate Limit).\n\nЧтобы продолжить, получите токен здесь:\n${tokenUrl}\n\nИ перезагрузите страницу.`);
@@ -516,21 +525,30 @@ async function processFiles(mode) {
             }
 
             if (fetchSuccess) {
-                if (content.length > 0) {
-                    const lines = content.split(/\r\n|\r|\n/);
-                    totalLinesCount += lines.length;
-                    const nonEmpty = lines.filter(l => l.trim().length > 0).length;
-                    codeLinesCount += nonEmpty;
-                }
+                // --- ИСПРАВЛЕНИЕ: ПОДСЧЕТ СТРОК ---
+                const lines = content.split('\n');
+                totalLinesCount += lines.length;
 
-                statTotalEl.innerText = totalLinesCount;
-                statCodeEl.innerText = codeLinesCount;
+                // Считаем строки, которые не пустые (после trim)
+                const nonEmptyCount = lines.filter(line => line.trim() !== '').length;
+                codeLinesCount += nonEmptyCount;
+
+                // Обновляем UI сразу же
+                statTotalEl.innerText = totalLinesCount.toLocaleString();
+                statCodeEl.innerText = codeLinesCount.toLocaleString();
+                // ----------------------------------
 
                 if (mode === 'download') {
+                    const removeComments = document.getElementById('opt-remove-comments').checked;
+                    const removeEmpty = document.getElementById('opt-remove-empty').checked;
+                    const ext = '.' + path.split('.').pop().toLowerCase();
+
+                    const optimizedContent = optimizeCode(content, ext, removeComments, removeEmpty);
+
                     outputContent += "===\n";
                     outputContent += `File: ${path}\n`;
                     outputContent += "===\n";
-                    outputContent += content + "\n\n";
+                    outputContent += optimizedContent + "\n\n";
                 }
             } else {
                 if (mode === 'download') outputContent += `\n!!! FAILED TO READ: ${path} !!!\n`;
@@ -539,16 +557,15 @@ async function processFiles(mode) {
 
         if (mode === 'download') {
             downloadAsFile("project_bundle.txt", outputContent);
-        } else {
-            statusText.innerText = "Готово!";
-            setTimeout(() => statusDiv.classList.add('hidden'), 2000);
-            return;
         }
+
+        // Завершение
+        statusText.innerText = "Готово!";
+        setTimeout(() => statusDiv.classList.add('hidden'), 2000);
 
     } catch (e) {
         alert("Ошибка в процессе обработки: " + e.message);
-    } finally {
-        if (mode === 'download') statusDiv.classList.add('hidden');
+        statusDiv.classList.add('hidden');
     }
 }
 
@@ -560,4 +577,37 @@ function downloadAsFile(filename, text) {
     document.body.appendChild(element);
     element.click();
     document.body.removeChild(element);
+}
+
+/* Добавьте эту функцию в конец script.js или в блок helpers */
+function optimizeCode(content, ext, removeComments, removeEmpty) {
+    let result = content;
+
+    // 1. Удаление комментариев (Базовая реализация на Regex)
+    if (removeComments) {
+        // Осторожно с Regex, это базовая версия.
+        // Для JS, TS, C, Java, CSS и т.д.
+        if (['.js', '.ts', '.jsx', '.tsx', '.css', '.scss', '.java', '.c', '.cpp', '.cs', '.php'].includes(ext)) {
+            // Удаляем блоки /* ... */
+            result = result.replace(/\/\*[\s\S]*?\*\//g, '');
+            // Удаляем однострочные // (но стараемся не трогать URL http://)
+            result = result.replace(/^(\s*)\/\/.*$/gm, '$1');
+        }
+        // Для Python, Ruby, Shell, YAML (.py, .rb, .sh, .yaml)
+        else if (['.py', '.rb', '.sh', '.yaml', '.yml', '.dockerfile'].includes(ext)) {
+            result = result.replace(/^(\s*)#.*$/gm, '$1');
+        }
+        // Для HTML/XML
+        else if (['.html', '.xml', '.svg'].includes(ext)) {
+            result = result.replace(/<!--[\s\S]*?-->/g, '');
+        }
+    }
+
+    // 2. Удаление пустых строк
+    if (removeEmpty) {
+        // Разбиваем на строки, фильтруем пустые (или содержащие только пробелы), собираем обратно
+        result = result.split('\n').filter(line => line.trim() !== '').join('\n');
+    }
+
+    return result.trim();
 }
