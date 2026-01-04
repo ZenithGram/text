@@ -12,13 +12,10 @@ const ALLOWED_EXTENSIONS = [
     '.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs', '.vue', '.svelte',
     '.html', '.htm', '.css', '.scss', '.sass', '.less',
     '.php', '.py', '.rb', '.pl', '.pm', '.go', '.rs', '.dart', '.lua',
-
     // App & System
     '.java', '.kt', '.kts', '.swift', '.c', '.cpp', '.h', '.hpp', '.cs', '.sh', '.bat', '.cmd', '.ps1',
-
     // Data & Config
     '.json', '.yaml', '.yml', '.toml', '.xml', '.sql', '.graphql', '.env.example',
-
     // Docs
     '.md', '.mdx', '.txt', '.rst'
 ];
@@ -31,10 +28,13 @@ let githubRepoMeta = null;
 
 /* --- THEME TOGGLE --- */
 document.addEventListener('DOMContentLoaded', () => {
-    const savedTheme = localStorage.getItem('theme');
+    const savedTheme = localStorage.getItem('theme') || 'dark';
     if (savedTheme === 'light') {
         document.documentElement.setAttribute('data-theme', 'light');
         updateThemeIcon(true);
+    } else {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        updateThemeIcon(false);
     }
 });
 
@@ -42,7 +42,7 @@ function toggleTheme() {
     const html = document.documentElement;
     const currentTheme = html.getAttribute('data-theme');
     if (currentTheme === 'light') {
-        html.removeAttribute('data-theme');
+        html.setAttribute('data-theme', 'dark');
         localStorage.setItem('theme', 'dark');
         updateThemeIcon(false);
     } else {
@@ -69,41 +69,76 @@ function switchTab(tab) {
     }
 }
 
-/* --- LOAD DATA --- */
+/* --- LOAD DATA (FIXED) --- */
+/* --- LOAD DATA (UPDATED) --- */
 async function fetchGitHubRepo() {
-    const url = document.getElementById('repoUrl').value;
-    const token = document.getElementById('repoToken').value;
+    const urlInput = document.getElementById('repoUrl').value.trim();
+    let token = document.getElementById('repoToken').value.trim();
 
-    if (!url) return alert("Введите URL репозитория");
-    const match = url.match(/github\.com\/([^\/]+)\/([^\/]+)/);
-    if (!match) return alert("Некорректная ссылка GitHub");
-    const [_, owner, repoName] = match;
-    const repo = repoName.replace('.git', '');
+    if (!urlInput) return alert("Введите URL репозитория");
+
+    // 1. Очистка токена от мусора
+    // Если пользователь скопировал "Bearer ghp_...", убираем "Bearer "
+    if (token.toLowerCase().startsWith('bearer ')) {
+        token = token.slice(7).trim();
+    }
+
+    // 2. Очистка URL
+    const cleanUrl = urlInput.replace(/\/$/, '').replace('.git', '');
+    const match = cleanUrl.match(/github\.com\/([^\/]+)\/([^\/]+)/);
+
+    if (!match) return alert("Некорректная ссылка GitHub. Формат: https://github.com/user/repo");
+
+    const owner = match[1];
+    const repo = match[2];
 
     try {
-        const repoRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
-            headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-        });
-        if (!repoRes.ok) throw new Error("Репозиторий не найден");
+        // Формируем заголовки.
+        // Важно: если токен пустой, не отправляем заголовок Authorization вообще,
+        // иначе GitHub вернет 401 даже для публичных репо.
+        const headers = {};
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        // 1. Проверяем репозиторий
+        const repoRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers });
+
+        if (!repoRes.ok) {
+            if (repoRes.status === 401) throw new Error("Ошибка авторизации (401). Токен недействителен, просрочен или введен с ошибкой.");
+            if (repoRes.status === 403) throw new Error("Доступ запрещен (403). Либо лимит API исчерпан, либо токену не хватает прав (нужны права 'repo').");
+            if (repoRes.status === 404) throw new Error("Репозиторий не найден (404). Проверьте ссылку. Если репо приватный — проверьте токен.");
+            throw new Error(`Ошибка GitHub API: ${repoRes.status}`);
+        }
+
         const repoData = await repoRes.json();
 
+        // Сохраняем метаданные
         githubRepoMeta = { owner, repo, branch: repoData.default_branch, token };
         globalFileList = null;
 
-        const treeRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/${repoData.default_branch}?recursive=1`, {
-            headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-        });
+        // 2. Загружаем дерево файлов
+        const treeRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/${repoData.default_branch}?recursive=1`, { headers });
+
+        if (!treeRes.ok) throw new Error("Не удалось получить структуру файлов.");
+
         const treeData = await treeRes.json();
         if (treeData.truncated) alert("Репозиторий очень большой, показаны не все файлы.");
 
-        allPaths = treeData.tree.map(item => item.path);
+        // Получаем пути
+        allPaths = treeData.tree
+            .filter(item => item.type === 'blob')
+            .map(item => item.path);
+
+        if (allPaths.length === 0) return alert("Репозиторий пуст.");
+
         initializeTree(allPaths);
 
     } catch (e) {
-        alert("Ошибка: " + e.message);
+        alert("ОШИБКА: " + e.message);
+        console.error(e);
     }
 }
-
 document.getElementById('folderInput').addEventListener('change', (e) => {
     const files = e.target.files;
     allPaths = [];
@@ -117,24 +152,32 @@ document.getElementById('folderInput').addEventListener('change', (e) => {
 
 /* --- BUILD SELECTION TREE --- */
 function initializeTree(paths) {
+    // Сброс UI перед новой отрисовкой
+    document.getElementById('file-list').innerHTML = '';
+    document.getElementById('tree-output-container').innerHTML = '';
+
+    // Сброс статистики
+    document.getElementById('stat-total-lines').innerText = '0';
+    document.getElementById('stat-code-lines').innerText = '0';
+
     treeDataRoot = buildTreeObject(paths);
     const container = document.getElementById('file-list');
-    container.innerHTML = '';
+
     const rootUl = document.createElement('ul');
     rootUl.className = 'selection-tree';
 
     const keys = Object.keys(treeDataRoot).sort(sortItems(treeDataRoot));
     keys.forEach(key => {
-        // Начальное состояние parentChecked = true, фильтрация начнется внутри createNode
         rootUl.appendChild(createNode(key, treeDataRoot[key], '', true));
     });
     container.appendChild(rootUl);
 
     renderExtensions(paths);
+
+    // Показываем секцию выбора
     document.getElementById('selection-section').classList.remove('hidden');
     document.getElementById('result-section').classList.add('hidden');
 
-    // Обновляем счетчик
     updateSelectionCount();
 }
 
@@ -159,41 +202,31 @@ const sortItems = (node) => (a, b) => {
     return a.localeCompare(b);
 };
 
-/* --- NODE CREATION (UPDATED WITH FILTERS) --- */
+/* --- NODE CREATION --- */
 function createNode(name, data, parentPath, parentChecked) {
     const li = document.createElement('li');
     const fullPath = parentPath ? `${parentPath}/${name}` : name;
     const isFolder = data !== null;
 
-    // --- LOGIC FOR DEFAULT SELECTION ---
-    let isChecked = parentChecked; // Если родитель выключен, ребенок тоже
-
+    let isChecked = parentChecked;
     if (parentChecked) {
         if (isFolder) {
-            // Проверяем, не в списке ли игнорируемых папок
-            if (IGNORED_FOLDERS.includes(name)) {
-                isChecked = false;
-            }
+            if (IGNORED_FOLDERS.includes(name)) isChecked = false;
         } else {
-            // Проверяем расширение файла
             const lastDotIndex = name.lastIndexOf('.');
             if (lastDotIndex === -1) {
-                // Файлы без расширения (Dockerfile, Makefile, LICENSE) - включаем выборочно или по умолчанию
                 const lowerName = name.toLowerCase();
                 if (['dockerfile', 'makefile', 'license', 'readme', 'changelog'].some(n => lowerName.includes(n))) {
                     isChecked = true;
                 } else {
-                    isChecked = false; // Неизвестный файл без расширения
+                    isChecked = false;
                 }
             } else {
                 const ext = name.substring(lastDotIndex).toLowerCase();
-                if (!ALLOWED_EXTENSIONS.includes(ext)) {
-                    isChecked = false;
-                }
+                if (!ALLOWED_EXTENSIONS.includes(ext)) isChecked = false;
             }
         }
     }
-    // -----------------------------------
 
     const div = document.createElement('div');
     div.className = 'selection-item';
@@ -244,8 +277,6 @@ function createNode(name, data, parentPath, parentChecked) {
         const ul = document.createElement('ul');
         const keys = Object.keys(data).sort(sortItems(data));
         keys.forEach(key => {
-            // Передаем текущее состояние (isChecked) детям
-            // Если папка выключена (isChecked=false), дети создадутся выключенными
             ul.appendChild(createNode(key, data[key], fullPath, isChecked));
         });
         li.appendChild(ul);
@@ -256,19 +287,15 @@ function createNode(name, data, parentPath, parentChecked) {
 function updateAncestors(el) {
     const parentUl = el.closest('ul');
     if (!parentUl || parentUl.classList.contains('selection-tree')) return;
-
     const parentLi = parentUl.parentElement;
     const parentCheckbox = parentLi.querySelector(':scope > .selection-item > input[type="checkbox"]');
     if (!parentCheckbox) return;
-
     const siblings = Array.from(parentUl.children).map(li =>
         li.querySelector(':scope > .selection-item > input[type="checkbox"]')
     );
-
     const allChecked = siblings.every(cb => cb.checked);
     const allUnchecked = siblings.every(cb => !cb.checked);
     const someIndeterminate = siblings.some(cb => cb.indeterminate);
-
     if (allChecked && !someIndeterminate) {
         parentCheckbox.checked = true;
         parentCheckbox.indeterminate = false;
@@ -292,7 +319,6 @@ function renderExtensions(paths) {
     const container = document.getElementById('extension-list');
     container.innerHTML = '';
     const counts = {};
-
     paths.forEach(p => {
         const name = p.split('/').pop();
         if (name.includes('.')) {
@@ -302,13 +328,11 @@ function renderExtensions(paths) {
             counts['no-ext'] = (counts['no-ext'] || 0) + 1;
         }
     });
-
     if (Object.keys(counts).length === 0) {
         document.getElementById('extension-container').classList.add('hidden');
         return;
     }
     document.getElementById('extension-container').classList.remove('hidden');
-
     Object.entries(counts).sort((a, b) => b[1] - a[1]).forEach(([ext, count]) => {
         const tag = document.createElement('div');
         tag.className = 'ext-tag';
@@ -325,11 +349,9 @@ function toggleByExtension(ext) {
         if (ext === 'no-ext') return !path.split('/').pop().includes('.');
         return path.endsWith(ext);
     });
-
     if (targets.length === 0) return;
     const isAllSelected = targets.every(cb => cb.checked);
     const newState = !isAllSelected;
-
     targets.forEach(cb => {
         cb.checked = newState;
         updateAncestors(cb);
@@ -345,27 +367,28 @@ function toggleAll(state) {
     updateSelectionCount();
 }
 
-/* --- GENERATE --- */
+/* --- GENERATE VIEW --- */
 let finalResultObject = {};
 
 function generateTree() {
     const checkedFiles = Array.from(document.querySelectorAll('input[type="checkbox"][data-type="file"]:checked'))
         .map(cb => cb.dataset.path);
-
     if (checkedFiles.length === 0) return alert("Ничего не выбрано!");
 
     finalResultObject = buildTreeObject(checkedFiles);
     renderCurrentView();
-
     document.getElementById('result-section').classList.remove('hidden');
-    document.getElementById('tree-output-container').scrollIntoView({ behavior: 'smooth' });
+
+    // Скролл к результату
+    setTimeout(() => {
+        document.getElementById('result-section').scrollIntoView({ behavior: 'smooth' });
+    }, 100);
 }
 
 function renderCurrentView() {
     const mode = document.getElementById('view-mode').value;
     const container = document.getElementById('tree-output-container');
     container.innerHTML = '';
-
     if (mode === 'vertical') {
         container.innerHTML = `<div class="vertical-tree">${renderVerticalRecursive(finalResultObject, true)}</div>`;
     } else if (mode === 'ascii') {
@@ -409,65 +432,117 @@ function copyToClipboard() {
     navigator.clipboard.writeText(container.innerText).then(() => alert("Скопировано!"));
 }
 
-/* --- DOWNLOAD --- */
-async function downloadCombinedFile() {
+/* --- PROCESS FILES (COUNT & DOWNLOAD) --- */
+async function processFiles(mode) {
     const checkedFiles = Array.from(document.querySelectorAll('input[type="checkbox"][data-type="file"]:checked'))
         .map(cb => cb.dataset.path);
 
     if (checkedFiles.length === 0) return alert("Ничего не выбрано!");
-    if (checkedFiles.length > 50 && githubRepoMeta) {
-        if (!confirm(`Выбрано ${checkedFiles.length} файлов. Загрузка с GitHub может занять время. Продолжить?`)) return;
+    if (githubRepoMeta && checkedFiles.length > 50) {
+        if (!confirm(`Выбрано ${checkedFiles.length} файлов. Это потребует времени для скачивания/анализа. Продолжить?`)) return;
     }
 
     const statusDiv = document.getElementById('loading-status');
     const statusText = document.getElementById('loading-text');
+
+    const statTotalEl = document.getElementById('stat-total-lines');
+    const statCodeEl = document.getElementById('stat-code-lines');
+
+    let totalLinesCount = 0;
+    let codeLinesCount = 0;
+    statTotalEl.innerText = '0';
+    statCodeEl.innerText = '0';
+
     statusDiv.classList.remove('hidden');
 
-    let outputContent = "PROJECT STRUCTURE:\n";
+    // === СТРУКТУРА ФАЙЛА (LLM FRIENDLY) ===
+    let outputContent = "";
     const treeObj = buildTreeObject(checkedFiles);
-    outputContent += renderASCIIRecursive(treeObj);
-    outputContent += "\n\n";
+    const treeString = renderASCIIRecursive(treeObj);
+
+    if (mode === 'download') {
+        outputContent += "PROJECT DIRECTORY STRUCTURE:\n";
+        outputContent += treeString;
+        outputContent += "\n\n";
+    }
 
     try {
-        if (githubRepoMeta) {
-            for (let i = 0; i < checkedFiles.length; i++) {
-                const path = checkedFiles[i];
-                statusText.innerText = `Загрузка: ${i + 1}/${checkedFiles.length} (${path})`;
+        for (let i = 0; i < checkedFiles.length; i++) {
+            const path = checkedFiles[i];
+
+            const actionText = mode === 'download' ? "Скачивание" : "Анализ";
+            statusText.innerText = `${actionText}: ${i + 1}/${checkedFiles.length} (${path})`;
+
+            let content = "";
+            let fetchSuccess = false;
+
+            if (githubRepoMeta) {
                 const url = `https://api.github.com/repos/${githubRepoMeta.owner}/${githubRepoMeta.repo}/contents/${path}?ref=${githubRepoMeta.branch}`;
                 const headers = githubRepoMeta.token ? { 'Authorization': `Bearer ${githubRepoMeta.token}` } : {};
+
                 const res = await fetch(url, { headers });
+
                 if (res.ok) {
                     const data = await res.json();
-                    // Декодируем base64 контент, корректно обрабатывая кириллицу
-                    const content = new TextDecoder().decode(Uint8Array.from(atob(data.content), c => c.charCodeAt(0)));
-                    outputContent += `\n---\nFILE: ${path}\n---\n${content}\n`;
+                    if (data.encoding === 'base64') {
+                        content = new TextDecoder().decode(Uint8Array.from(atob(data.content), c => c.charCodeAt(0)));
+                    } else {
+                        // Для редких случаев, если API вернет что-то иное (обычно для text файлов)
+                        content = atob(data.content);
+                    }
+                    fetchSuccess = true;
                 } else {
-                    outputContent += `\n!!! FAILED TO FETCH: ${path} !!!\n`;
+                    console.error(`Ошибка при загрузке ${path}: ${res.status}`);
                 }
-            }
-        } else if (globalFileList) {
-            for (let i = 0; i < checkedFiles.length; i++) {
-                const path = checkedFiles[i];
-                statusText.innerText = `Обработка: ${i + 1}/${checkedFiles.length} (${path})`;
+            } else if (globalFileList) {
                 let fileObj = null;
                 for (let j = 0; j < globalFileList.length; j++) {
                     if (globalFileList[j].webkitRelativePath === path) { fileObj = globalFileList[j]; break; }
                 }
                 if (fileObj) {
                     try {
-                        const content = await fileObj.text();
-                        outputContent += `\n---\nFILE: ${path}\n---\n${content}\n`;
-                    } catch (e) {
-                        outputContent += `\n!!! ERROR READING LOCAL FILE: ${path} !!!\n`;
-                    }
+                        content = await fileObj.text();
+                        fetchSuccess = true;
+                    } catch (e) { console.error(e); }
                 }
             }
+
+            if (fetchSuccess) {
+                // Подсчет строк для UI (оставляем для пользователя)
+                if (content.length > 0) {
+                    const lines = content.split(/\r\n|\r|\n/);
+                    totalLinesCount += lines.length;
+                    const nonEmpty = lines.filter(l => l.trim().length > 0).length;
+                    codeLinesCount += nonEmpty;
+                }
+
+                statTotalEl.innerText = totalLinesCount;
+                statCodeEl.innerText = codeLinesCount;
+
+                // Запись в файл (БЕЗ СТАТИСТИКИ, НОВЫЙ ФОРМАТ)
+                if (mode === 'download') {
+                    outputContent += "================================================================\n";
+                    outputContent += `File: ${path}\n`;
+                    outputContent += "================================================================\n";
+                    outputContent += content + "\n\n";
+                }
+            } else {
+                if (mode === 'download') outputContent += `\n!!! FAILED TO READ: ${path} !!!\n`;
+            }
         }
-        downloadAsFile("project_bundle.txt", outputContent);
+
+        if (mode === 'download') {
+            downloadAsFile("project_bundle.txt", outputContent);
+        } else {
+            statusText.innerText = "Готово!";
+            setTimeout(() => statusDiv.classList.add('hidden'), 2000);
+            return;
+        }
+
     } catch (e) {
-        alert("Ошибка: " + e.message);
+        alert("Ошибка в процессе обработки: " + e.message);
     } finally {
-        statusDiv.classList.add('hidden');
+        if (mode === 'download') statusDiv.classList.add('hidden');
     }
 }
 

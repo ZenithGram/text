@@ -1,29 +1,29 @@
 :root {
-    --primary: #3b82f6;
-    --primary-hover: #60a5fa;
-    --bg: #0f172a;
-    --card-bg: #1e293b;
-    --text: #f1f5f9;
-    --text-muted: #94a3b8;
-    --border: #334155;
-    --input-bg: #0f172a;
-    --hover-bg: #334155;
-    --tree-line: #475569;
-    --success: #10b981;
-    --success-hover: #059669;
+    --bg: #1b1b1f;
+    --card-bg: #202127;
+    --primary: #52525b;
+    --primary-hover: #71717a;
+    --text: #e4e4e7;
+    --text-muted: #a1a1aa;
+    --border: #3f3f46;
+    --input-bg: #16161a;
+    --hover-bg: #27272a;
+    --tree-line: #52525b;
+    --success: #3f6212;
+    --success-hover: #4d7c0f;
 }
 
 [data-theme="light"] {
-    --primary: #2563eb;
-    --primary-hover: #1d4ed8;
-    --bg: #f1f5f9;
-    --card-bg: #fff;
-    --text: #334155;
-    --text-muted: #64748b;
-    --border: #e2e8f0;
-    --input-bg: #fff;
-    --hover-bg: #f1f5f9;
-    --tree-line: #cbd5e1;
+    --bg: #f4f4f5;
+    --card-bg: #ffffff;
+    --primary: #52525b;
+    --primary-hover: #3f3f46;
+    --text: #18181b;
+    --text-muted: #71717a;
+    --border: #d4d4d8;
+    --input-bg: #ffffff;
+    --hover-bg: #e4e4e7;
+    --tree-line: #a1a1aa;
 }
 
 body {
@@ -44,7 +44,6 @@ body {
     position: relative;
 }
 
-/* Theme Button */
 .theme-btn {
     position: absolute;
     top: 0;
@@ -65,7 +64,7 @@ body {
 
 .theme-btn:hover {
     background: var(--hover-bg);
-    color: var(--primary);
+    color: #fff;
 }
 
 header {
@@ -85,22 +84,17 @@ p {
     font-size: 13px;
 }
 
-/* Cards */
 .card {
     background: var(--card-bg);
     border-radius: 8px;
     padding: 15px;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
     margin-bottom: 15px;
     border: 1px solid var(--border);
-    transition: background-color 0.3s, border-color 0.3s;
 }
 
-.hidden {
-    display: none !important;
-}
+.hidden { display: none !important; }
 
-/* Tabs */
 .tabs {
     display: flex;
     gap: 10px;
@@ -121,30 +115,15 @@ p {
 }
 
 .tab-btn.active {
-    color: var(--primary);
-    border-bottom-color: var(--primary);
+    color: var(--text);
+    border-bottom-color: var(--text);
     margin-bottom: -1px;
 }
 
-.panel {
-    display: none;
-}
+.panel { display: none; }
+.panel.active { display: block; animation: fadeIn 0.3s; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-.panel.active {
-    display: block;
-    animation: fadeIn 0.3s;
-}
-
-@keyframes fadeIn {
-    from {
-        opacity: 0;
-    }
-    to {
-        opacity: 1;
-    }
-}
-
-/* Inputs */
 .input-group {
     display: flex;
     gap: 8px;
@@ -164,8 +143,8 @@ input[type="text"], input[type="password"] {
 }
 
 input:focus {
-    border-color: var(--primary);
-    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+    border-color: var(--primary-hover);
+    box-shadow: 0 0 0 1px var(--primary-hover);
 }
 
 small {
@@ -175,8 +154,7 @@ small {
     margin-bottom: 10px;
 }
 
-/* Buttons */
-.action-btn, .primary-btn {
+.action-btn, .primary-btn, .secondary-btn {
     width: 100%;
     background: var(--primary);
     color: white;
@@ -189,22 +167,38 @@ small {
     transition: 0.2s;
 }
 
-.action-btn:hover, .primary-btn:hover {
-    background: var(--primary-hover);
+.action-btn:hover, .primary-btn:hover { background: var(--primary-hover); }
+
+/* Новый класс для кнопки "Показать дерево", чтобы она не выглядела главной */
+.full-width-btn {
+    width: 100%;
+    margin-bottom: 10px;
 }
 
-.primary-btn {
-    margin-top: 15px;
-    font-size: 14px;
+.secondary-btn {
+    background: var(--hover-bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    width: auto;
+    padding: 6px 12px;
+    font-size: 12px;
+}
+.secondary-btn:hover {
+    border-color: var(--text-muted);
+    background: var(--primary);
+    color: #fff;
 }
 
-.download-btn {
-    background-color: var(--success);
+/* Разделительная линия */
+.divider {
+    height: 1px;
+    background: var(--border);
+    margin: 15px 0;
 }
 
-.download-btn:hover {
-    background-color: var(--success-hover);
-}
+.primary-btn { margin-top: 10px; font-size: 14px; }
+.download-btn { background-color: var(--success); }
+.download-btn:hover { background-color: var(--success-hover); }
 
 .small-btn {
     background: var(--hover-bg);
@@ -216,11 +210,8 @@ small {
     font-size: 11px;
 }
 
-.small-btn:hover {
-    border-color: var(--text-muted);
-}
+.small-btn:hover { background: var(--primary); color: white; }
 
-/* Upload Box */
 .upload-box {
     position: relative;
     height: 80px;
@@ -250,7 +241,6 @@ small {
     font-size: 12px;
 }
 
-/* --- SELECTION TREE --- */
 .section-header {
     display: flex;
     justify-content: space-between;
@@ -266,7 +256,6 @@ small {
     align-items: center;
 }
 
-/* СТИЛЬ СЧЕТЧИКА */
 .counter-badge {
     background-color: var(--primary);
     color: white;
@@ -299,10 +288,7 @@ ul.selection-tree ul {
     margin-left: 12px;
 }
 
-ul.selection-tree ul.expanded {
-    display: block;
-
-}
+ul.selection-tree ul.expanded { display: block; }
 
 .selection-item {
     display: flex;
@@ -333,37 +319,21 @@ ul.selection-tree ul.expanded {
     margin-right: 2px;
 }
 
-.caret::before {
-    content: "▶";
-}
-
-.caret.caret-down {
-    transform: rotate(90deg);
-    color: var(--text);
-}
-
-.spacer {
-    width: 22px;
-}
+.caret::before { content: "▶"; }
+.caret.caret-down { transform: rotate(90deg); color: var(--text); }
+.spacer { width: 22px; }
 
 input[type="checkbox"] {
     margin: 0 8px 0 4px;
     cursor: pointer;
     width: 14px;
     height: 14px;
-    accent-color: var(--primary);
+    accent-color: var(--text-muted);
 }
 
-.folder-label {
-    font-weight: 700;
-    color: var(--text);
-}
+.folder-label { font-weight: 700; color: var(--text); }
+.file-label { color: var(--text-muted); }
 
-.file-label {
-    color: var(--text-muted);
-}
-
-/* Extensions Bar */
 .extension-bar {
     display: flex;
     align-items: center;
@@ -376,22 +346,13 @@ input[type="checkbox"] {
     border: 1px solid var(--border);
 }
 
-.filter-label {
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text-muted);
-}
-
-.tags-wrapper {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 5px;
-}
+.filter-label { font-size: 11px; font-weight: 600; color: var(--text-muted); }
+.tags-wrapper { display: flex; flex-wrap: wrap; gap: 5px; }
 
 .ext-tag {
     background: var(--card-bg);
     border: 1px solid var(--border);
-    color: var(--text);
+    color: var(--text-muted);
     padding: 2px 6px;
     border-radius: 10px;
     font-size: 11px;
@@ -402,16 +363,12 @@ input[type="checkbox"] {
 }
 
 .ext-tag:hover, .ext-tag.active {
-    border-color: var(--primary);
-    color: var(--primary);
-    background: rgba(59, 130, 246, 0.1);
+    border-color: var(--text);
+    color: var(--text);
+    background: var(--hover-bg);
 }
 
-/* --- RESULT AREA --- */
-.result-controls {
-    display: flex;
-    gap: 8px;
-}
+.result-controls { display: flex; gap: 8px; }
 
 .mode-select {
     padding: 4px 8px;
@@ -422,6 +379,37 @@ input[type="checkbox"] {
     cursor: pointer;
     font-size: 12px;
     outline: none;
+}
+
+.stats-panel {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 5px;
+    padding: 12px;
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+
+.stats-info { display: flex; gap: 20px; }
+.stat-item { display: flex; flex-direction: column; }
+
+.stat-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.stat-value {
+    font-size: 18px;
+    font-weight: bold;
+    color: var(--text);
+    font-family: 'Consolas', monospace;
+    margin-top: 2px;
 }
 
 .output-container {
@@ -438,38 +426,35 @@ input[type="checkbox"] {
 .status-bar {
     margin-top: 10px;
     padding: 10px;
-    background: rgba(59, 130, 246, 0.1);
-    border: 1px solid var(--primary);
+    background: var(--hover-bg);
+    border: 1px solid var(--border);
     border-radius: 6px;
-    color: var(--primary);
+    color: var(--text);
     font-size: 12px;
     display: flex;
     align-items: center;
     gap: 8px;
 }
 
-/* --- VISUAL TREES --- */
-/* 1. Vertical (Classic) */
 .vertical-tree ul {
     list-style: none;
-    padding-left: 16px; /* БЫЛО 24px. Уменьшил отступ слева */
+    padding-left: 16px;
     margin: 0;
     border-left: 1px solid var(--border);
 }
 
 .vertical-tree ul li {
     position: relative;
-    padding-left: 10px; /* БЫЛО 12px. Чуть ближе текст к линии */
-    margin-bottom: 6px; /* БЫЛО 8px. Чуть плотнее по вертикали */
+    padding-left: 10px;
+    margin-bottom: 6px;
 }
 
-/* Горизонтальная черточка */
 .vertical-tree ul li::before {
     content: "";
     position: absolute;
     top: 11px;
     left: 0;
-    width: 8px; /* БЫЛО 10px. Линия короче */
+    width: 8px;
     height: 1px;
     background: var(--border);
 }
@@ -477,24 +462,16 @@ input[type="checkbox"] {
 .tree-row {
     display: flex;
     align-items: center;
-    gap: 8px; /* БЫЛО 10px. Иконка ближе к тексту */
+    gap: 8px;
     font-family: 'Consolas', monospace;
     color: var(--text);
     line-height: 1.4;
-    font-size: 13.5px; /* Чуть меньше шрифт, чтобы влазило больше */
+    font-size: 13.5px;
 }
 
-.fa-folder {
-    color: #f59e0b;
-    font-size: 14px;
-}
+.fa-folder { color: #a1a1aa; font-size: 14px; }
+.fa-file { color: var(--text-muted); font-size: 13px; }
 
-.fa-file {
-    color: var(--text-muted);
-    font-size: 13px;
-}
-
-/* ASCII */
 .ascii-tree {
     font-family: 'Consolas', 'Monaco', monospace;
     white-space: pre;
