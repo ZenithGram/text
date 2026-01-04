@@ -69,16 +69,14 @@ function switchTab(tab) {
     }
 }
 
-/* --- LOAD DATA (FIXED) --- */
-/* --- LOAD DATA (UPDATED) --- */
+/* --- LOAD DATA (FIXED & UPDATED) --- */
 async function fetchGitHubRepo() {
     const urlInput = document.getElementById('repoUrl').value.trim();
     let token = document.getElementById('repoToken').value.trim();
 
     if (!urlInput) return alert("Введите URL репозитория");
 
-    // 1. Очистка токена от мусора
-    // Если пользователь скопировал "Bearer ghp_...", убираем "Bearer "
+    // 1. Очистка токена
     if (token.toLowerCase().startsWith('bearer ')) {
         token = token.slice(7).trim();
     }
@@ -92,11 +90,12 @@ async function fetchGitHubRepo() {
     const owner = match[1];
     const repo = match[2];
 
+    const tokenUrl = "https://github.com/settings/tokens";
+
     try {
-        // Формируем заголовки.
-        // Важно: если токен пустой, не отправляем заголовок Authorization вообще,
-        // иначе GitHub вернет 401 даже для публичных репо.
-        const headers = {};
+        const headers = {
+            'Accept': 'application/vnd.github.v3+json'
+        };
         if (token) {
             headers['Authorization'] = `Bearer ${token}`;
         }
@@ -105,27 +104,33 @@ async function fetchGitHubRepo() {
         const repoRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers });
 
         if (!repoRes.ok) {
-            if (repoRes.status === 401) throw new Error("Ошибка авторизации (401). Токен недействителен, просрочен или введен с ошибкой.");
-            if (repoRes.status === 403) throw new Error("Доступ запрещен (403). Либо лимит API исчерпан, либо токену не хватает прав (нужны права 'repo').");
-            if (repoRes.status === 404) throw new Error("Репозиторий не найден (404). Проверьте ссылку. Если репо приватный — проверьте токен.");
+            if (repoRes.status === 404) throw new Error(`Репозиторий не найден (404).\nЕсли это приватный репозиторий, создайте токен здесь:\n${tokenUrl}`);
+            if (repoRes.status === 401) throw new Error(`Ошибка авторизации (401). Токен недействителен.\nПолучить новый: ${tokenUrl}`);
+            if (repoRes.status === 403) {
+                if (!token) {
+                    throw new Error(`Превышен лимит запросов GitHub для гостей (60/час).\nПожалуйста, создайте токен (лимит 5000/час) здесь:\n${tokenUrl}`);
+                } else {
+                    throw new Error(`Доступ запрещен (403). Токену не хватает прав или лимит исчерпан.\nПроверьте права токена: ${tokenUrl}`);
+                }
+            }
             throw new Error(`Ошибка GitHub API: ${repoRes.status}`);
         }
 
         const repoData = await repoRes.json();
-
-        // Сохраняем метаданные
         githubRepoMeta = { owner, repo, branch: repoData.default_branch, token };
         globalFileList = null;
 
         // 2. Загружаем дерево файлов
         const treeRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/${repoData.default_branch}?recursive=1`, { headers });
 
-        if (!treeRes.ok) throw new Error("Не удалось получить структуру файлов.");
+        if (!treeRes.ok) {
+            if (treeRes.status === 403 && !token) throw new Error(`Превышен лимит API при загрузке дерева.\nИспользуйте токен: ${tokenUrl}`);
+            throw new Error("Не удалось получить структуру файлов.");
+        }
 
         const treeData = await treeRes.json();
         if (treeData.truncated) alert("Репозиторий очень большой, показаны не все файлы.");
 
-        // Получаем пути
         allPaths = treeData.tree
             .filter(item => item.type === 'blob')
             .map(item => item.path);
@@ -135,10 +140,11 @@ async function fetchGitHubRepo() {
         initializeTree(allPaths);
 
     } catch (e) {
-        alert("ОШИБКА: " + e.message);
+        alert("ОШИБКА:\n" + e.message);
         console.error(e);
     }
 }
+
 document.getElementById('folderInput').addEventListener('change', (e) => {
     const files = e.target.files;
     allPaths = [];
@@ -152,11 +158,8 @@ document.getElementById('folderInput').addEventListener('change', (e) => {
 
 /* --- BUILD SELECTION TREE --- */
 function initializeTree(paths) {
-    // Сброс UI перед новой отрисовкой
     document.getElementById('file-list').innerHTML = '';
     document.getElementById('tree-output-container').innerHTML = '';
-
-    // Сброс статистики
     document.getElementById('stat-total-lines').innerText = '0';
     document.getElementById('stat-code-lines').innerText = '0';
 
@@ -174,7 +177,6 @@ function initializeTree(paths) {
 
     renderExtensions(paths);
 
-    // Показываем секцию выбора
     document.getElementById('selection-section').classList.remove('hidden');
     document.getElementById('result-section').classList.add('hidden');
 
@@ -379,7 +381,6 @@ function generateTree() {
     renderCurrentView();
     document.getElementById('result-section').classList.remove('hidden');
 
-    // Скролл к результату
     setTimeout(() => {
         document.getElementById('result-section').scrollIntoView({ behavior: 'smooth' });
     }, 100);
@@ -455,7 +456,6 @@ async function processFiles(mode) {
 
     statusDiv.classList.remove('hidden');
 
-    // === СТРУКТУРА ФАЙЛА (LLM FRIENDLY) ===
     let outputContent = "";
     const treeObj = buildTreeObject(checkedFiles);
     const treeString = renderASCIIRecursive(treeObj);
@@ -478,7 +478,10 @@ async function processFiles(mode) {
 
             if (githubRepoMeta) {
                 const url = `https://api.github.com/repos/${githubRepoMeta.owner}/${githubRepoMeta.repo}/contents/${path}?ref=${githubRepoMeta.branch}`;
-                const headers = githubRepoMeta.token ? { 'Authorization': `Bearer ${githubRepoMeta.token}` } : {};
+                const headers = { 'Accept': 'application/vnd.github.v3+json' };
+                if (githubRepoMeta.token) {
+                    headers['Authorization'] = `Bearer ${githubRepoMeta.token}`;
+                }
 
                 const res = await fetch(url, { headers });
 
@@ -487,12 +490,17 @@ async function processFiles(mode) {
                     if (data.encoding === 'base64') {
                         content = new TextDecoder().decode(Uint8Array.from(atob(data.content), c => c.charCodeAt(0)));
                     } else {
-                        // Для редких случаев, если API вернет что-то иное (обычно для text файлов)
                         content = atob(data.content);
                     }
                     fetchSuccess = true;
                 } else {
                     console.error(`Ошибка при загрузке ${path}: ${res.status}`);
+                    // ОБНОВЛЕННАЯ ЧАСТЬ НИЖЕ
+                    if (res.status === 403 && !githubRepoMeta.token) {
+                        const tokenUrl = "https://github.com/settings/tokens";
+                        alert(`Достигнут лимит скачивания файлов (API Rate Limit).\n\nЧтобы продолжить, получите токен здесь:\n${tokenUrl}\n\nИ перезагрузите страницу.`);
+                        break;
+                    }
                 }
             } else if (globalFileList) {
                 let fileObj = null;
@@ -508,7 +516,6 @@ async function processFiles(mode) {
             }
 
             if (fetchSuccess) {
-                // Подсчет строк для UI (оставляем для пользователя)
                 if (content.length > 0) {
                     const lines = content.split(/\r\n|\r|\n/);
                     totalLinesCount += lines.length;
@@ -519,11 +526,10 @@ async function processFiles(mode) {
                 statTotalEl.innerText = totalLinesCount;
                 statCodeEl.innerText = codeLinesCount;
 
-                // Запись в файл (БЕЗ СТАТИСТИКИ, НОВЫЙ ФОРМАТ)
                 if (mode === 'download') {
-                    outputContent += "================================================================\n";
+                    outputContent += "===\n";
                     outputContent += `File: ${path}\n`;
-                    outputContent += "================================================================\n";
+                    outputContent += "===\n";
                     outputContent += content + "\n\n";
                 }
             } else {

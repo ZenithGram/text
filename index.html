@@ -31,7 +31,10 @@
                 <input type="text" id="repoUrl" placeholder="https://github.com/username/repo">
                 <input type="password" id="repoToken" placeholder="Token (опционально)">
             </div>
-            <small>Токен нужен для приватных репо и увеличения лимитов API.</small>
+            <small>
+                Токен нужен для приватных репо и увеличения лимитов API.
+                <a href="https://github.com/settings/tokens" target="_blank" style="color: var(--text); text-decoration: underline;">Получить токен (Generate New Token)</a>
+            </small>
             <button class="action-btn" onclick="fetchGitHubRepo()">📥 Загрузить список файлов</button>
         </div>
 
