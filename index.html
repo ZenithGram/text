@@ -6,24 +6,24 @@
     <title>File Tree & Bundle Generator</title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Добавлена библиотека для работы с ZIP -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </head>
 <body>
-
 <div class="container">
     <button id="theme-toggle" class="theme-btn" onclick="toggleTheme()" title="Переключить тему">
         <i class="fa-solid fa-sun"></i>
     </button>
-
     <header>
         <h1>🌲 File Tree Generator</h1>
-        <p>GitHub / Local &rarr; Visual Tree & Bundle</p>
+        <p>GitHub / Local / ZIP &rarr; Visual Tree & Bundle</p>
     </header>
 
     <!-- 1. СЕКЦИЯ ВВОДА -->
     <div class="card input-section">
         <div class="tabs">
             <button class="tab-btn active" onclick="switchTab('github')"><i class="fab fa-github"></i> GitHub Repo</button>
-            <button class="tab-btn" onclick="switchTab('local')"><i class="fa-regular fa-folder-open"></i> Локальная папка</button>
+            <button class="tab-btn" onclick="switchTab('local')"><i class="fa-regular fa-folder-open"></i> Local / Zip</button>
         </div>
 
         <div id="github-panel" class="panel active">
@@ -33,23 +33,34 @@
             </div>
             <small>
                 Токен нужен для приватных репо и увеличения лимитов API.
-                <a href="https://github.com/settings/tokens" target="_blank" style="color: var(--text); text-decoration: underline;">Получить токен (Generate New Token)</a>
+                <a href="https://github.com/settings/tokens" target="_blank" style="color: var(--text); text-decoration: underline;">Получить токен</a>
             </small>
             <button class="action-btn" onclick="fetchGitHubRepo()">📥 Загрузить список файлов</button>
         </div>
 
         <div id="local-panel" class="panel">
-            <div class="upload-box">
-                <input type="file" id="folderInput" webkitdirectory directory multiple>
-                <div class="upload-label">
-                    <i class="fa-solid fa-cloud-arrow-up"></i>
-                    <span>Нажмите, чтобы выбрать папку</span>
+            <div class="local-actions">
+                <!-- Загрузка папки -->
+                <div class="upload-box">
+                    <input type="file" id="folderInput" webkitdirectory directory multiple>
+                    <div class="upload-label">
+                        <i class="fa-solid fa-folder-tree"></i>
+                        <span>Выбрать папку</span>
+                    </div>
+                </div>
+                <!-- Загрузка ZIP -->
+                <div class="upload-box">
+                    <input type="file" id="zipInput" accept=".zip">
+                    <div class="upload-label">
+                        <i class="fa-solid fa-file-zipper"></i>
+                        <span>Выбрать ZIP</span>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- 2. СЕКЦИЯ ВЫБОРА И ДЕЙСТВИЙ (ОБНОВЛЕНО) -->
+    <!-- 2. СЕКЦИЯ ВЫБОРА И ДЕЙСТВИЙ -->
     <div id="selection-section" class="card hidden">
         <div class="section-header">
             <h2>📂 Выберите файлы <span id="file-counter" class="counter-badge">0</span></h2>
@@ -66,14 +77,13 @@
 
         <div id="file-list" class="file-list-container"></div>
 
-        <!-- КНОПКА ПОКАЗА ДЕРЕВА -->
         <button class="secondary-btn full-width-btn" style="margin-top: 15px;" onclick="generateTree()">
             <i class="fa-solid fa-eye"></i> Показать визуальное дерево
         </button>
 
         <div class="divider"></div>
 
-        <!-- СТАТИСТИКА И СКАЧИВАНИЕ (ТЕПЕРЬ ТУТ) -->
+        <!-- СТАТИСТИКА И СКАЧИВАНИЕ -->
         <div class="stats-panel">
             <div class="stats-info">
                 <div class="stat-item">
@@ -81,46 +91,34 @@
                     <span id="stat-total-lines" class="stat-value">0</span>
                 </div>
                 <div class="stat-item">
-                    <span class="stat-label">Код (без пустых)</span>
+                    <span class="stat-label">Код (не пустые)</span>
                     <span id="stat-code-lines" class="stat-value">0</span>
                 </div>
             </div>
             <div class="stats-actions">
+                <!-- Кнопка пересчета теперь обновляет и дерево -->
                 <button class="secondary-btn" onclick="processFiles('stats')">
-                    <i class="fa-solid fa-calculator"></i> Пересчитать
+                    <i class="fa-solid fa-calculator"></i> Пересчитать размеры
                 </button>
             </div>
-            <!-- ПАНЕЛЬ НАСТРОЕК ОПТИМИЗАЦИИ -->
+
             <div class="optimization-panel">
                 <div class="opt-header">
                     <i class="fa-solid fa-sliders"></i> Оптимизация
                 </div>
-
                 <div class="opt-controls">
-                    <!-- Опция: Удалить комментарии -->
                     <label class="toggle-control">
                         <input type="checkbox" id="opt-remove-comments">
-                        <span class="toggle-track">
-                <span class="toggle-indicator"></span>
-            </span>
-                        <span class="toggle-text">
-                <i class="fa-regular fa-comments"></i> Без комментариев
-            </span>
+                        <span class="toggle-track"><span class="toggle-indicator"></span></span>
+                        <span class="toggle-text"><i class="fa-regular fa-comments"></i> Без комментариев</span>
                     </label>
-
-                    <!-- Опция: Удалить пустые строки -->
                     <label class="toggle-control">
                         <input type="checkbox" id="opt-remove-empty" checked>
-                        <span class="toggle-track">
-                <span class="toggle-indicator"></span>
-            </span>
-                        <span class="toggle-text">
-                <i class="fa-solid fa-align-justify"></i> Без пустых строк
-            </span>
+                        <span class="toggle-track"><span class="toggle-indicator"></span></span>
+                        <span class="toggle-text"><i class="fa-solid fa-align-justify"></i> Без пустых строк</span>
                     </label>
                 </div>
             </div>
-
         </div>
 
         <button class="primary-btn download-btn" onclick="processFiles('download')">
@@ -133,14 +131,14 @@
         </div>
     </div>
 
-    <!-- 3. СЕКЦИЯ РЕЗУЛЬТАТА (ТОЛЬКО ВИЗУАЛ) -->
+    <!-- 3. СЕКЦИЯ РЕЗУЛЬТАТА -->
     <div id="result-section" class="card hidden">
         <div class="section-header">
             <h2>Результат</h2>
             <div class="result-controls">
                 <select id="view-mode" onchange="renderCurrentView()" class="mode-select">
-                    <option value="vertical">Vertical (Classic)</option>
-                    <option value="ascii">ASCII (Readme.md)</option>
+                    <option value="vertical">Visual Tree (со статистикой)</option>
+                    <option value="ascii">ASCII (для Readme)</option>
                 </select>
                 <button onclick="copyToClipboard()" class="small-btn"><i class="fa-regular fa-copy"></i> Copy</button>
             </div>
@@ -148,7 +146,6 @@
         <div id="tree-output-container" class="output-container"></div>
     </div>
 </div>
-
 <script src="script.js"></script>
 </body>
 </html>

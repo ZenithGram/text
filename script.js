@@ -4,17 +4,13 @@ const IGNORED_FOLDERS = [
     'node_modules', 'vendor', 'bower_components',
     'dist', 'build', 'out', 'target', 'bin', 'obj',
     'coverage', '__pycache__', '.next', '.nuxt', '.cache',
-    'venv', 'env', '.mypy_cache', '.ds_store'
+    'venv', 'env', '.mypy_cache', '.ds_store', '.sass-cache'
 ];
 
-// Добавьте в IGNORED_FOLDERS или сделайте массив IGNORED_FILES
 const IGNORED_FILES = [
     'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml',
     'composer.lock', 'Cargo.lock', '.DS_Store', 'thumbs.db'
 ];
-
-// В функции createNode добавьте проверку:
-if (IGNORED_FILES.includes(name.toLowerCase())) isChecked = false;
 
 const ALLOWED_EXTENSIONS = [
     // Web & Scripting
@@ -24,7 +20,7 @@ const ALLOWED_EXTENSIONS = [
     // App & System
     '.java', '.kt', '.kts', '.swift', '.c', '.cpp', '.h', '.hpp', '.cs', '.sh', '.bat', '.cmd', '.ps1',
     // Data & Config
-    '.json', '.yaml', '.yml', '.toml', '.xml', '.sql', '.graphql', '.env.example',
+    '.json', '.yaml', '.yml', '.toml', '.xml', '.sql', '.graphql', '.env.example', '.dockerfile', 'dockerfile',
     // Docs
     '.md', '.mdx', '.txt', '.rst'
 ];
@@ -33,7 +29,10 @@ const ALLOWED_EXTENSIONS = [
 let allPaths = [];
 let treeDataRoot = {};
 let globalFileList = null;
+let isZipMode = false;
 let githubRepoMeta = null;
+let statsCache = {}; // { "path/to/file": { lines: 10, code: 5 } }
+let currentZipName = ""; // <--- Добавьте эту строку
 
 /* --- THEME TOGGLE --- */
 document.addEventListener('DOMContentLoaded', () => {
@@ -60,6 +59,7 @@ function toggleTheme() {
         updateThemeIcon(true);
     }
 }
+
 function updateThemeIcon(isLight) {
     const btn = document.getElementById('theme-toggle');
     btn.innerHTML = isLight ? '<i class="fa-solid fa-moon"></i>' : '<i class="fa-solid fa-sun"></i>';
@@ -69,6 +69,7 @@ function updateThemeIcon(isLight) {
 function switchTab(tab) {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+
     if (tab === 'github') {
         document.querySelector('button[onclick="switchTab(\'github\')"]').classList.add('active');
         document.getElementById('github-panel').classList.add('active');
@@ -78,19 +79,31 @@ function switchTab(tab) {
     }
 }
 
-/* --- LOAD DATA (FIXED & UPDATED) --- */
+/* --- HELPERS: IGNORE CHECK --- */
+function isPathIgnored(path) {
+    const parts = path.split('/');
+    // 1. Check directories
+    for (const part of parts) {
+        if (IGNORED_FOLDERS.includes(part)) return true;
+    }
+    // 2. Check filename/extension
+    const filename = parts[parts.length - 1];
+    if (IGNORED_FILES.includes(filename)) return true;
+
+    if (filename.startsWith('.') && !ALLOWED_EXTENSIONS.some(ext => filename.endsWith(ext)) && filename !== '.env.example' && filename !== '.gitignore') {
+        return false;
+    }
+    return false;
+}
+
+/* --- LOAD DATA: GITHUB --- */
 async function fetchGitHubRepo() {
     const urlInput = document.getElementById('repoUrl').value.trim();
     let token = document.getElementById('repoToken').value.trim();
 
     if (!urlInput) return alert("Введите URL репозитория");
+    if (token.toLowerCase().startsWith('bearer ')) token = token.slice(7).trim();
 
-    // 1. Очистка токена
-    if (token.toLowerCase().startsWith('bearer ')) {
-        token = token.slice(7).trim();
-    }
-
-    // 2. Очистка URL
     const cleanUrl = urlInput.replace(/\/$/, '').replace('.git', '');
     const match = cleanUrl.match(/github\.com\/([^\/]+)\/([^\/]+)/);
 
@@ -99,82 +112,108 @@ async function fetchGitHubRepo() {
     const owner = match[1];
     const repo = match[2];
 
-    const tokenUrl = "https://github.com/settings/tokens";
-
     try {
-        const headers = {
-            'Accept': 'application/vnd.github.v3+json'
-        };
-        if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-        }
+        const headers = { 'Accept': 'application/vnd.github.v3+json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
 
-        // 1. Проверяем репозиторий
-        const repoRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers });
-
-        if (!repoRes.ok) {
-            if (repoRes.status === 404) throw new Error(`Репозиторий не найден (404).\nЕсли это приватный репозиторий, создайте токен здесь:\n${tokenUrl}`);
-            if (repoRes.status === 401) throw new Error(`Ошибка авторизации (401). Токен недействителен.\nПолучить новый: ${tokenUrl}`);
-            if (repoRes.status === 403) {
-                if (!token) {
-                    throw new Error(`Превышен лимит запросов GitHub для гостей (60/час).\nПожалуйста, создайте токен (лимит 5000/час) здесь:\n${tokenUrl}`);
-                } else {
-                    throw new Error(`Доступ запрещен (403). Токену не хватает прав или лимит исчерпан.\nПроверьте права токена: ${tokenUrl}`);
-                }
-            }
-            throw new Error(`Ошибка GitHub API: ${repoRes.status}`);
-        }
-
+        const repoRes = await fetchWithRetry(`https://api.github.com/repos/${owner}/${repo}`, headers);
         const repoData = await repoRes.json();
+
         githubRepoMeta = { owner, repo, branch: repoData.default_branch, token };
         globalFileList = null;
+        isZipMode = false;
 
-        // 2. Загружаем дерево файлов
-        const treeRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/${repoData.default_branch}?recursive=1`, { headers });
-
-        if (!treeRes.ok) {
-            if (treeRes.status === 403 && !token) throw new Error(`Превышен лимит API при загрузке дерева.\nИспользуйте токен: ${tokenUrl}`);
-            throw new Error("Не удалось получить структуру файлов.");
-        }
-
+        const treeRes = await fetchWithRetry(`https://api.github.com/repos/${owner}/${repo}/git/trees/${repoData.default_branch}?recursive=1`, headers);
         const treeData = await treeRes.json();
+
         if (treeData.truncated) alert("Репозиторий очень большой, показаны не все файлы.");
 
         allPaths = treeData.tree
-            .filter(item => item.type === 'blob')
+            .filter(item => item.type === 'blob' && !isPathIgnored(item.path))
             .map(item => item.path);
 
-        if (allPaths.length === 0) return alert("Репозиторий пуст.");
+        if (allPaths.length === 0) return alert("Репозиторий пуст или содержит только игнорируемые файлы.");
 
         initializeTree(allPaths);
-
     } catch (e) {
         alert("ОШИБКА:\n" + e.message);
         console.error(e);
     }
 }
 
+/* --- LOAD DATA: LOCAL FOLDER --- */
 document.getElementById('folderInput').addEventListener('change', (e) => {
     const files = e.target.files;
+    if (files.length === 0) return;
+
     allPaths = [];
-    globalFileList = files;
+    globalFileList = Array.from(files); // Important: Convert FileList to Array
     githubRepoMeta = null;
-    for (let i = 0; i < files.length; i++) {
-        if (files[i].webkitRelativePath) allPaths.push(files[i].webkitRelativePath);
+    isZipMode = false;
+
+    for (let i = 0; i < globalFileList.length; i++) {
+        const path = globalFileList[i].webkitRelativePath;
+        if (!isPathIgnored(path)) {
+            allPaths.push(path);
+        }
     }
+
     if (allPaths.length > 0) initializeTree(allPaths);
+    else alert("В выбранной папке нет допустимых файлов (или все игнорируются).");
+
+    e.target.value = '';
 });
 
-/* --- BUILD SELECTION TREE --- */
+/* --- LOAD DATA: ZIP ARCHIVE --- */
+document.getElementById('zipInput').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Сохраняем имя файла без расширения сразу при загрузке
+    currentZipName = file.name.replace(/\.[^/.]+$/, "");
+
+    try {
+        const zip = new JSZip();
+        const zipContent = await zip.loadAsync(file);
+
+        allPaths = [];
+        globalFileList = [];
+        githubRepoMeta = null;
+        isZipMode = true;
+
+        zipContent.forEach((relativePath, zipEntry) => {
+            if (!zipEntry.dir && !isPathIgnored(relativePath)) {
+                allPaths.push(relativePath);
+                globalFileList.push({
+                    path: relativePath,
+                    zipObj: zipEntry
+                });
+            }
+        });
+
+        allPaths.sort();
+
+        if (allPaths.length > 0) initializeTree(allPaths);
+        else alert("Архив пуст или все файлы игнорируются.");
+
+    } catch (err) {
+        alert("Ошибка при чтении ZIP файла: " + err.message);
+        console.error(err);
+    }
+
+    e.target.value = '';
+});
+/* --- INITIALIZE UI --- */
 function initializeTree(paths) {
     document.getElementById('file-list').innerHTML = '';
     document.getElementById('tree-output-container').innerHTML = '';
     document.getElementById('stat-total-lines').innerText = '0';
     document.getElementById('stat-code-lines').innerText = '0';
+    statsCache = {};
 
     treeDataRoot = buildTreeObject(paths);
-    const container = document.getElementById('file-list');
 
+    const container = document.getElementById('file-list');
     const rootUl = document.createElement('ul');
     rootUl.className = 'selection-tree';
 
@@ -182,8 +221,8 @@ function initializeTree(paths) {
     keys.forEach(key => {
         rootUl.appendChild(createNode(key, treeDataRoot[key], '', true));
     });
-    container.appendChild(rootUl);
 
+    container.appendChild(rootUl);
     renderExtensions(paths);
 
     document.getElementById('selection-section').classList.remove('hidden');
@@ -220,6 +259,7 @@ function createNode(name, data, parentPath, parentChecked) {
     const isFolder = data !== null;
 
     let isChecked = parentChecked;
+
     if (parentChecked) {
         if (isFolder) {
             if (IGNORED_FOLDERS.includes(name)) isChecked = false;
@@ -260,7 +300,6 @@ function createNode(name, data, parentPath, parentChecked) {
     checkbox.dataset.path = fullPath;
     checkbox.dataset.type = isFolder ? 'folder' : 'file';
     checkbox.checked = isChecked;
-
     checkbox.onclick = (e) => {
         const currentState = e.target.checked;
         if (isFolder) {
@@ -292,21 +331,26 @@ function createNode(name, data, parentPath, parentChecked) {
         });
         li.appendChild(ul);
     }
+
     return li;
 }
 
 function updateAncestors(el) {
     const parentUl = el.closest('ul');
     if (!parentUl || parentUl.classList.contains('selection-tree')) return;
+
     const parentLi = parentUl.parentElement;
     const parentCheckbox = parentLi.querySelector(':scope > .selection-item > input[type="checkbox"]');
     if (!parentCheckbox) return;
+
     const siblings = Array.from(parentUl.children).map(li =>
         li.querySelector(':scope > .selection-item > input[type="checkbox"]')
     );
+
     const allChecked = siblings.every(cb => cb.checked);
     const allUnchecked = siblings.every(cb => !cb.checked);
     const someIndeterminate = siblings.some(cb => cb.indeterminate);
+
     if (allChecked && !someIndeterminate) {
         parentCheckbox.checked = true;
         parentCheckbox.indeterminate = false;
@@ -317,6 +361,7 @@ function updateAncestors(el) {
         parentCheckbox.checked = false;
         parentCheckbox.indeterminate = true;
     }
+
     updateAncestors(parentCheckbox);
 }
 
@@ -325,11 +370,12 @@ function updateSelectionCount() {
     document.getElementById('file-counter').innerText = count;
 }
 
-/* --- FILTERS --- */
+/* --- FILTERS (EXTENSIONS) --- */
 function renderExtensions(paths) {
     const container = document.getElementById('extension-list');
     container.innerHTML = '';
     const counts = {};
+
     paths.forEach(p => {
         const name = p.split('/').pop();
         if (name.includes('.')) {
@@ -339,11 +385,14 @@ function renderExtensions(paths) {
             counts['no-ext'] = (counts['no-ext'] || 0) + 1;
         }
     });
+
     if (Object.keys(counts).length === 0) {
         document.getElementById('extension-container').classList.add('hidden');
         return;
     }
+
     document.getElementById('extension-container').classList.remove('hidden');
+
     Object.entries(counts).sort((a, b) => b[1] - a[1]).forEach(([ext, count]) => {
         const tag = document.createElement('div');
         tag.className = 'ext-tag';
@@ -360,9 +409,11 @@ function toggleByExtension(ext) {
         if (ext === 'no-ext') return !path.split('/').pop().includes('.');
         return path.endsWith(ext);
     });
+
     if (targets.length === 0) return;
     const isAllSelected = targets.every(cb => cb.checked);
     const newState = !isAllSelected;
+
     targets.forEach(cb => {
         cb.checked = newState;
         updateAncestors(cb);
@@ -384,23 +435,29 @@ let finalResultObject = {};
 function generateTree() {
     const checkedFiles = Array.from(document.querySelectorAll('input[type="checkbox"][data-type="file"]:checked'))
         .map(cb => cb.dataset.path);
+
     if (checkedFiles.length === 0) return alert("Ничего не выбрано!");
 
     finalResultObject = buildTreeObject(checkedFiles);
-    renderCurrentView();
-    document.getElementById('result-section').classList.remove('hidden');
 
-    setTimeout(() => {
-        document.getElementById('result-section').scrollIntoView({ behavior: 'smooth' });
-    }, 100);
+    renderCurrentView();
+
+    document.getElementById('result-section').classList.remove('hidden');
+    if (!document.getElementById('result-section').classList.contains('visible-once')) {
+        setTimeout(() => {
+            document.getElementById('result-section').scrollIntoView({ behavior: 'smooth' });
+        }, 100);
+        document.getElementById('result-section').classList.add('visible-once');
+    }
 }
 
 function renderCurrentView() {
     const mode = document.getElementById('view-mode').value;
     const container = document.getElementById('tree-output-container');
     container.innerHTML = '';
+
     if (mode === 'vertical') {
-        container.innerHTML = `<div class="vertical-tree">${renderVerticalRecursive(finalResultObject, true)}</div>`;
+        container.innerHTML = `<div class="vertical-tree">${renderVerticalRecursive(finalResultObject, '', true)}</div>`;
     } else if (mode === 'ascii') {
         const pre = document.createElement('pre');
         pre.className = 'ascii-tree';
@@ -409,26 +466,77 @@ function renderCurrentView() {
     }
 }
 
-function renderVerticalRecursive(node, isRoot) {
+/* --- UPDATED RENDER LOGIC WITH DUAL STATS --- */
+function renderVerticalRecursive(node, currentPath, isRoot) {
     if (!node) return '';
-    let html = isRoot ? '<ul>' : '<ul>';
+    let html = '<ul>';
     const keys = Object.keys(node).sort(sortItems(node));
+
     keys.forEach(key => {
         const isFolder = node[key] !== null;
+        const fullPath = currentPath ? `${currentPath}/${key}` : key;
         const icon = isFolder ? '<i class="fa-solid fa-folder"></i>' : '<i class="fa-regular fa-file"></i>';
-        html += `<li><div class="tree-row">${icon} <span>${key}</span></div>${isFolder ? renderVerticalRecursive(node[key], false) : ''}</li>`;
+
+        // Stats Logic
+        let statHtml = '';
+        let stats = { lines: 0, code: 0 };
+
+        if (!isFolder && statsCache[fullPath]) {
+            stats = statsCache[fullPath];
+        } else if (isFolder) {
+            stats = calculateFolderStats(node[key], fullPath);
+        }
+
+        if (stats.lines > 0) {
+            // Displays: "Total / Code"
+            statHtml = `<span class="line-badge" title="Всего строк / Чистый код">${stats.lines} / ${stats.code}</span>`;
+        }
+
+        html += `<li>
+            <div class="tree-row">
+                ${icon} <span>${key}</span> ${statHtml}
+            </div>
+            ${isFolder ? renderVerticalRecursive(node[key], fullPath, false) : ''}
+        </li>`;
     });
+
     return html + '</ul>';
+}
+
+// FIXED: Now returns object { lines, code } and sums both
+function calculateFolderStats(node, currentPath) {
+    let sum = { lines: 0, code: 0 };
+    if (!node) return sum;
+
+    Object.keys(node).forEach(key => {
+        const fullPath = currentPath ? `${currentPath}/${key}` : key;
+        if (node[key] === null) {
+            // File: check cache
+            if (statsCache[fullPath]) {
+                sum.lines += (statsCache[fullPath].lines || 0);
+                sum.code += (statsCache[fullPath].code || 0);
+            }
+        } else {
+            // Folder: recursive
+            const childStats = calculateFolderStats(node[key], fullPath);
+            sum.lines += childStats.lines;
+            sum.code += childStats.code;
+        }
+    });
+    return sum;
 }
 
 function renderASCIIRecursive(node, prefix = "") {
     let result = "";
     const keys = Object.keys(node).sort(sortItems(node));
+
     keys.forEach((key, index) => {
         const isLast = index === keys.length - 1;
         const isFolder = node[key] !== null;
         const connector = isLast ? "└── " : "├── ";
+
         result += prefix + connector + key + "\n";
+
         if (isFolder) {
             const childPrefix = prefix + (isLast ? "    " : "│   ");
             result += renderASCIIRecursive(node[key], childPrefix);
@@ -442,15 +550,16 @@ function copyToClipboard() {
     navigator.clipboard.writeText(container.innerText).then(() => alert("Скопировано!"));
 }
 
-/* --- PROCESS FILES (COUNT & DOWNLOAD) --- */
+/* --- PROCESS FILES (STATS & DOWNLOAD) --- */
+/* --- PROCESS FILES (STATS & DOWNLOAD) --- */
 async function processFiles(mode) {
     const checkedFiles = Array.from(document.querySelectorAll('input[type="checkbox"][data-type="file"]:checked'))
         .map(cb => cb.dataset.path);
 
     if (checkedFiles.length === 0) return alert("Ничего не выбрано!");
 
-    if (githubRepoMeta && checkedFiles.length > 50) {
-        if (!confirm(`Выбрано ${checkedFiles.length} файлов. Это потребует времени для скачивания/анализа. Продолжить?`)) return;
+    if (githubRepoMeta && checkedFiles.length > 50 && mode === 'download') {
+        if (!confirm(`Выбрано ${checkedFiles.length} файлов. Скачивание может занять время. Продолжить?`)) return;
     }
 
     const statusDiv = document.getElementById('loading-status');
@@ -458,21 +567,16 @@ async function processFiles(mode) {
     const statTotalEl = document.getElementById('stat-total-lines');
     const statCodeEl = document.getElementById('stat-code-lines');
 
-    // Сброс счетчиков
-    let totalLinesCount = 0;
-    let codeLinesCount = 0;
-    statTotalEl.innerText = '0';
-    statCodeEl.innerText = '0';
-
     statusDiv.classList.remove('hidden');
 
+    let totalLinesCount = 0;
+    let codeLinesCount = 0;
     let outputContent = "";
-    // Генерируем дерево только для режима скачивания
+
     if (mode === 'download') {
         const treeObj = buildTreeObject(checkedFiles);
-        const treeString = renderASCIIRecursive(treeObj);
         outputContent += "PROJECT DIRECTORY STRUCTURE:\n";
-        outputContent += treeString;
+        outputContent += renderASCIIRecursive(treeObj);
         outputContent += "\n\n";
     }
 
@@ -485,63 +589,72 @@ async function processFiles(mode) {
             let content = "";
             let fetchSuccess = false;
 
-            // Логика получения файла (GitHub или Local)
+            // --- FETCH STRATEGY ---
             if (githubRepoMeta) {
-                const url = `https://api.github.com/repos/${githubRepoMeta.owner}/${githubRepoMeta.repo}/contents/${path}?ref=${githubRepoMeta.branch}`;
-                const headers = { 'Accept': 'application/vnd.github.v3+json' };
-                if (githubRepoMeta.token) {
-                    headers['Authorization'] = `Bearer ${githubRepoMeta.token}`;
-                }
+                try {
+                    const url = `https://api.github.com/repos/${githubRepoMeta.owner}/${githubRepoMeta.repo}/contents/${path}?ref=${githubRepoMeta.branch}`;
+                    const headers = { 'Accept': 'application/vnd.github.v3+json' };
+                    if (githubRepoMeta.token) headers['Authorization'] = `Bearer ${githubRepoMeta.token}`;
 
-                const res = await fetch(url, { headers });
-                if (res.ok) {
+                    const res = await fetchWithRetry(url, headers);
                     const data = await res.json();
+
                     if (data.encoding === 'base64') {
-                        // Исправление для корректного декодирования UTF-8
                         content = new TextDecoder().decode(Uint8Array.from(atob(data.content), c => c.charCodeAt(0)));
                     } else {
                         content = atob(data.content);
                     }
                     fetchSuccess = true;
-                } else {
-                    console.error(`Ошибка при загрузке ${path}: ${res.status}`);
-                    if (res.status === 403 && !githubRepoMeta.token) {
-                        const tokenUrl = "https://github.com/settings/tokens";
-                        alert(`Достигнут лимит скачивания файлов (API Rate Limit).\n\nЧтобы продолжить, получите токен здесь:\n${tokenUrl}\n\nИ перезагрузите страницу.`);
+                } catch (e) {
+                    console.error(`Failed ${path}: ${e.message}`);
+                    if (e.message.includes('403') || e.message.includes('Rate Limit')) {
+                        alert("Превышен лимит GitHub API.");
                         break;
                     }
                 }
+            } else if (isZipMode) {
+                const fileEntry = globalFileList.find(f => f.path === path);
+                if (fileEntry) {
+                    try {
+                        content = await fileEntry.zipObj.async("string");
+                        fetchSuccess = true;
+                    } catch (e) { console.error(e); }
+                }
             } else if (globalFileList) {
+                // Local Folder Mode
                 let fileObj = null;
                 for (let j = 0; j < globalFileList.length; j++) {
-                    if (globalFileList[j].webkitRelativePath === path) { fileObj = globalFileList[j]; break; }
+                    if (globalFileList[j].webkitRelativePath === path) {
+                        fileObj = globalFileList[j];
+                        break;
+                    }
                 }
+
                 if (fileObj) {
                     try {
                         content = await fileObj.text();
                         fetchSuccess = true;
-                    } catch (e) { console.error(e); }
+                    } catch (e) { console.error("Local read error:", e); }
+                } else {
+                    console.warn(`File not found: ${path}`);
                 }
             }
 
+            // --- PROCESS CONTENT ---
             if (fetchSuccess) {
-                // --- ИСПРАВЛЕНИЕ: ПОДСЧЕТ СТРОК ---
                 const lines = content.split('\n');
-                totalLinesCount += lines.length;
+                const fileTotal = lines.length;
+                const fileCode = lines.filter(line => line.trim() !== '').length;
 
-                // Считаем строки, которые не пустые (после trim)
-                const nonEmptyCount = lines.filter(line => line.trim() !== '').length;
-                codeLinesCount += nonEmptyCount;
+                totalLinesCount += fileTotal;
+                codeLinesCount += fileCode;
 
-                // Обновляем UI сразу же
-                statTotalEl.innerText = totalLinesCount.toLocaleString();
-                statCodeEl.innerText = codeLinesCount.toLocaleString();
-                // ----------------------------------
+                statsCache[path] = { lines: fileTotal, code: fileCode };
 
                 if (mode === 'download') {
                     const removeComments = document.getElementById('opt-remove-comments').checked;
                     const removeEmpty = document.getElementById('opt-remove-empty').checked;
-                    const ext = '.' + path.split('.').pop().toLowerCase();
+                    const ext = path.includes('.') ? '.' + path.split('.').pop().toLowerCase() : '';
 
                     const optimizedContent = optimizeCode(content, ext, removeComments, removeEmpty);
 
@@ -551,21 +664,71 @@ async function processFiles(mode) {
                     outputContent += optimizedContent + "\n\n";
                 }
             } else {
+                statsCache[path] = { lines: 0, code: 0 };
                 if (mode === 'download') outputContent += `\n!!! FAILED TO READ: ${path} !!!\n`;
             }
         }
 
-        if (mode === 'download') {
-            downloadAsFile("project_bundle.txt", outputContent);
+        statTotalEl.innerText = totalLinesCount.toLocaleString();
+        statCodeEl.innerText = codeLinesCount.toLocaleString();
+
+        if (mode === 'stats') {
+            generateTree();
         }
 
-        // Завершение
+        if (mode === 'download') {
+            // --- UPDATED FILENAME LOGIC ---
+            let filename = "project_bundle.txt";
+
+            if (githubRepoMeta) {
+                // 1. GitHub
+                filename = `${githubRepoMeta.repo}.txt`;
+            } else if (isZipMode && currentZipName) {
+                // 2. ZIP (uses global variable)
+                filename = `${currentZipName}.txt`;
+            } else if (globalFileList && globalFileList.length > 0) {
+                // 3. Local Folder
+                const firstPath = globalFileList[0].webkitRelativePath;
+                if (firstPath) {
+                    const rootParts = firstPath.split('/');
+                    if (rootParts.length > 0) {
+                        filename = `${rootParts[0]}.txt`;
+                    }
+                }
+            }
+
+            downloadAsFile(filename, outputContent);
+        }
+
         statusText.innerText = "Готово!";
-        setTimeout(() => statusDiv.classList.add('hidden'), 2000);
+        setTimeout(() => statusDiv.classList.add('hidden'), 1000);
 
     } catch (e) {
-        alert("Ошибка в процессе обработки: " + e.message);
+        alert("Критическая ошибка: " + e.message);
+        console.error(e);
         statusDiv.classList.add('hidden');
+    }
+}
+
+/* --- RETRY LOGIC --- */
+async function fetchWithRetry(url, headers, retries = 3, delay = 1000) {
+    for (let i = 0; i < retries; i++) {
+        try {
+            const res = await fetch(url, { headers });
+            if (res.status === 403) {
+                const remaining = res.headers.get('x-ratelimit-remaining');
+                if (remaining === '0') throw new Error("GitHub Rate Limit Exceeded (403)");
+            }
+            if (!res.ok) {
+                if (res.status === 404) throw new Error("404 Not Found");
+                throw new Error(`Status ${res.status}`);
+            }
+            return res;
+        } catch (err) {
+            const isLastAttempt = i === retries - 1;
+            if (isLastAttempt) throw err;
+            await new Promise(resolve => setTimeout(resolve, delay * (i + 1)));
+        }
     }
 }
 
@@ -579,33 +742,23 @@ function downloadAsFile(filename, text) {
     document.body.removeChild(element);
 }
 
-/* Добавьте эту функцию в конец script.js или в блок helpers */
 function optimizeCode(content, ext, removeComments, removeEmpty) {
     let result = content;
 
-    // 1. Удаление комментариев (Базовая реализация на Regex)
     if (removeComments) {
-        // Осторожно с Regex, это базовая версия.
-        // Для JS, TS, C, Java, CSS и т.д.
         if (['.js', '.ts', '.jsx', '.tsx', '.css', '.scss', '.java', '.c', '.cpp', '.cs', '.php'].includes(ext)) {
-            // Удаляем блоки /* ... */
             result = result.replace(/\/\*[\s\S]*?\*\//g, '');
-            // Удаляем однострочные // (но стараемся не трогать URL http://)
             result = result.replace(/^(\s*)\/\/.*$/gm, '$1');
         }
-        // Для Python, Ruby, Shell, YAML (.py, .rb, .sh, .yaml)
         else if (['.py', '.rb', '.sh', '.yaml', '.yml', '.dockerfile'].includes(ext)) {
             result = result.replace(/^(\s*)#.*$/gm, '$1');
         }
-        // Для HTML/XML
         else if (['.html', '.xml', '.svg'].includes(ext)) {
             result = result.replace(/<!--[\s\S]*?-->/g, '');
         }
     }
 
-    // 2. Удаление пустых строк
     if (removeEmpty) {
-        // Разбиваем на строки, фильтруем пустые (или содержащие только пробелы), собираем обратно
         result = result.split('\n').filter(line => line.trim() !== '').join('\n');
     }
 
