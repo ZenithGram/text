@@ -224,13 +224,13 @@ input[type="checkbox"] {
     font-size: 11px;
     color: var(--text-muted);
     background: var(--badge-bg);
-    padding: 2px 6px; /* Чуть больше отступы */
+    padding: 2px 6px;
     border-radius: 4px;
     margin-left: 8px;
-    min-width: 30px; /* Увеличили мин. ширину */
+    min-width: 30px;
     text-align: center;
-    white-space: nowrap; /* Чтобы текст не переносился */
-    font-family: 'Consolas', monospace; /* Моноширинный шрифт для цифр */
+    white-space: nowrap;
+    font-family: 'Consolas', monospace;
 }
 
 .ascii-tree {

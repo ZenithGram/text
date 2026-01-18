@@ -33,6 +33,7 @@ let isZipMode = false;
 let githubRepoMeta = null;
 let statsCache = {}; // { "path/to/file": { lines: 10, code: 5 } }
 let currentZipName = ""; // <--- Добавьте эту строку
+let lastSelectedPaths = null; // <--- ДОБАВЛЕНО: Хранилище для путей
 
 /* --- THEME TOGGLE --- */
 document.addEventListener('DOMContentLoaded', () => {
@@ -67,6 +68,8 @@ function updateThemeIcon(isLight) {
 
 /* --- TABS --- */
 function switchTab(tab) {
+    lastSelectedPaths = null; // <--- Сбрасываем память при смене режима
+
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
 
@@ -98,6 +101,7 @@ function isPathIgnored(path) {
 
 /* --- LOAD DATA: GITHUB --- */
 async function fetchGitHubRepo() {
+    saveCurrentSelection(); // <--- ВСТАВИТЬ ЭТУ СТРОКУ В САМОЕ НАЧАЛО
     const urlInput = document.getElementById('repoUrl').value.trim();
     let token = document.getElementById('repoToken').value.trim();
 
@@ -146,6 +150,8 @@ document.getElementById('folderInput').addEventListener('change', (e) => {
     const files = e.target.files;
     if (files.length === 0) return;
 
+    saveCurrentSelection();
+
     allPaths = [];
     globalFileList = Array.from(files); // Important: Convert FileList to Array
     githubRepoMeta = null;
@@ -168,6 +174,8 @@ document.getElementById('folderInput').addEventListener('change', (e) => {
 document.getElementById('zipInput').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+
+    saveCurrentSelection(); // <--- ВСТАВИТЬ СЮДА
 
     // Сохраняем имя файла без расширения сразу при загрузке
     currentZipName = file.name.replace(/\.[^/.]+$/, "");
@@ -210,7 +218,6 @@ function initializeTree(paths) {
     document.getElementById('stat-total-lines').innerText = '0';
     document.getElementById('stat-code-lines').innerText = '0';
     statsCache = {};
-
     treeDataRoot = buildTreeObject(paths);
 
     const container = document.getElementById('file-list');
@@ -218,19 +225,51 @@ function initializeTree(paths) {
     rootUl.className = 'selection-tree';
 
     const keys = Object.keys(treeDataRoot).sort(sortItems(treeDataRoot));
+
+    // 1. Строим дерево (применяются стандартные фильтры расширений)
     keys.forEach(key => {
         rootUl.appendChild(createNode(key, treeDataRoot[key], '', true));
     });
-
     container.appendChild(rootUl);
-    renderExtensions(paths);
 
+    // 2. LOGIC: Restore Selection (Умное восстановление)
+    if (lastSelectedPaths && lastSelectedPaths.size > 0) {
+        // Находим все чекбоксы ФАЙЛОВ в новом дереве
+        const allFileCheckboxes = container.querySelectorAll('input[type="checkbox"][data-type="file"]');
+        let restoredCount = 0;
+
+        allFileCheckboxes.forEach(cb => {
+            const path = cb.dataset.path;
+            // Если путь был в сохраненном списке -> ставим true, иначе -> false
+            // Это важно: мы снимаем галочки с "дефолтных" файлов, если пользователь их не выбирал в прошлый раз
+            if (lastSelectedPaths.has(path)) {
+                cb.checked = true;
+                restoredCount++;
+            } else {
+                cb.checked = false;
+            }
+            cb.indeterminate = false;
+        });
+
+        // 3. Обновляем визуальное состояние папок (индетерминантное состояние)
+        // Проходимся снизу вверх от всех выбранных файлов
+        const checkedFiles = container.querySelectorAll('input[type="checkbox"][data-type="file"]:checked');
+        checkedFiles.forEach(cb => updateAncestors(cb));
+
+        // (Опционально) Показать уведомление, если что-то восстановили
+        if (restoredCount > 0) {
+            console.log(`Restored selection for ${restoredCount} files.`);
+            const badge = document.getElementById('file-counter');
+            badge.style.backgroundColor = '#4d7c0f'; // Зеленый цвет на секунду
+            setTimeout(() => badge.style.backgroundColor = '', 1000);
+        }
+    }
+
+    renderExtensions(paths);
     document.getElementById('selection-section').classList.remove('hidden');
     document.getElementById('result-section').classList.add('hidden');
-
     updateSelectionCount();
 }
-
 function buildTreeObject(paths) {
     const root = {};
     paths.forEach(path => {
@@ -763,4 +802,16 @@ function optimizeCode(content, ext, removeComments, removeEmpty) {
     }
 
     return result.trim();
+}
+
+/* --- NEW FEATURE: SAVE SELECTION --- */
+// Функция сохраняет текущие выбранные пути перед обновлением
+function saveCurrentSelection() {
+    const checkedBoxes = document.querySelectorAll('input[type="checkbox"][data-type="file"]:checked');
+    if (checkedBoxes.length > 0) {
+        lastSelectedPaths = new Set(Array.from(checkedBoxes).map(cb => cb.dataset.path));
+        console.log(`Saved ${lastSelectedPaths.size} file selections.`);
+    } else {
+        lastSelectedPaths = null;
+    }
 }
