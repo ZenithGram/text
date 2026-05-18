@@ -17,7 +17,6 @@
         <h1>🌲 File Tree Generator</h1>
         <p>GitHub / Local / ZIP &rarr; Visual Tree & Bundle</p>
     </header>
-
     <div class="card input-section">
         <div class="tabs">
             <button class="tab-btn active" onclick="switchTab('github')"><i class="fab fa-github"></i> GitHub Repo</button>
@@ -53,7 +52,6 @@
             </div>
         </div>
     </div>
-
     <div id="selection-section" class="card hidden">
         <div class="section-header">
             <h2>📂 Выберите файлы <span id="file-counter" class="counter-badge">0</span></h2>
@@ -61,7 +59,6 @@
                 <button onclick="toggleAll(true)" class="small-btn">Все</button>
                 <button onclick="toggleAll(false)" class="small-btn">Ничего</button>
                 <div class="divider-vertical"></div>
-                <!-- ДОБАВЛЕН ПЕРЕКЛЮЧАТЕЛЬ СКРЫТЫХ ФАЙЛОВ -->
                 <label class="toggle-control" title="Показать скрытые системные папки (vendor, build, неизвестные форматы)">
                     <input type="checkbox" id="toggle-ignored-view" onchange="toggleIgnoredView()">
                     <span class="toggle-track" style="width: 32px; height: 18px;"><span class="toggle-indicator" style="width: 12px; height: 12px; top: 2px; left: 2px;"></span></span>
@@ -73,23 +70,19 @@
             <span class="filter-label">Типы:</span>
             <div id="extension-list" class="tags-wrapper"></div>
         </div>
-
-        <!-- КОНТЕЙНЕР ДЕРЕВА -->
         <div id="file-list" class="file-list-container"></div>
-
         <button class="secondary-btn full-width-btn" style="margin-top: 15px;" onclick="generateTree()">
             <i class="fa-solid fa-eye"></i> Показать визуальное дерево
         </button>
         <div class="divider"></div>
-
         <div class="stats-panel">
             <div class="stats-info">
                 <div class="stat-item">
-                    <span class="stat-label">Всего строк</span>
-                    <span id="stat-total-lines" class="stat-value">0</span>
+                    <span class="stat-label">Символов</span>
+                    <span id="stat-total-chars" class="stat-value">0</span>
                 </div>
                 <div class="stat-item">
-                    <span class="stat-label">Код (не пустые)</span>
+                    <span class="stat-label">Код (строк)</span>
                     <span id="stat-code-lines" class="stat-value">0</span>
                 </div>
             </div>
@@ -124,7 +117,6 @@
             <span id="loading-text">Обработка...</span>
         </div>
     </div>
-
     <div id="result-section" class="card hidden">
         <div class="section-header">
             <h2>Результат</h2>

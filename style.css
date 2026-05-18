@@ -12,6 +12,14 @@
     --success: #3f6212;
     --success-hover: #4d7c0f;
     --badge-bg: #333338;
+
+    /* Цвет для тегов расширений */
+    --ext-none: #ef4444;
+    --ext-none-bg: transparent;
+    --ext-partial: #eab308;
+    --ext-partial-bg: transparent;
+    --ext-all: #22c55e;
+    --ext-all-bg: rgba(34, 197, 94, 0.1);
 }
 
 [data-theme="light"] {
@@ -26,6 +34,12 @@
     --hover-bg: #e4e4e7;
     --tree-line: #a1a1aa;
     --badge-bg: #e4e4e7;
+
+    /* Цвет для тегов расширений (светлая тема) */
+    --ext-none: #dc2626;
+    --ext-partial: #d97706;
+    --ext-all: #16a34a;
+    --ext-all-bg: rgba(22, 163, 74, 0.1);
 }
 
 body {
@@ -61,7 +75,6 @@ p { color: var(--text-muted); margin-top: 4px; font-size: 13px; }
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3); margin-bottom: 15px;
     border: 1px solid var(--border);
 }
-
 .hidden { display: none !important; }
 
 /* Tabs */
@@ -72,7 +85,6 @@ p { color: var(--text-muted); margin-top: 4px; font-size: 13px; }
     transition: 0.2s; border-bottom: 2px solid transparent;
 }
 .tab-btn.active { color: var(--text); border-bottom-color: var(--text); margin-bottom: -1px; }
-
 .panel { display: none; }
 .panel.active { display: block; animation: fadeIn 0.3s; }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
@@ -171,15 +183,27 @@ input[type="checkbox"] {
 }
 .filter-label { font-size: 11px; font-weight: 600; color: var(--text-muted); }
 .tags-wrapper { display: flex; flex-wrap: wrap; gap: 5px; }
+
 .ext-tag {
     background: var(--card-bg); border: 1px solid var(--border);
-    color: var(--text-muted); padding: 2px 6px; border-radius: 10px;
+    padding: 2px 6px; border-radius: 10px; display: flex; align-items: center;
     font-size: 11px; font-family: monospace; cursor: pointer;
     user-select: none; transition: 0.2s;
 }
-.ext-tag:hover, .ext-tag.active {
-    border-color: var(--text); color: var(--text); background: var(--hover-bg);
+.ext-count {
+    margin-left: 4px; opacity: 0.8; font-size: 10px;
 }
+.ext-tag.ext-none { border-color: var(--ext-none); color: var(--ext-none); background: var(--ext-none-bg); }
+.ext-tag.ext-partial { border-color: var(--ext-partial); color: var(--ext-partial); background: var(--ext-partial-bg); }
+.ext-tag.ext-all { border-color: var(--ext-all); color: var(--ext-all); background: var(--ext-all-bg); }
+
+.ext-tag.ext-none:hover { background: rgba(239, 68, 68, 0.1); }
+.ext-tag.ext-partial:hover { background: rgba(234, 179, 8, 0.1); }
+.ext-tag.ext-all:hover { background: rgba(34, 197, 94, 0.2); }
+[data-theme="light"] .ext-tag.ext-none:hover { background: rgba(220, 38, 38, 0.1); }
+[data-theme="light"] .ext-tag.ext-partial:hover { background: rgba(217, 119, 6, 0.1); }
+[data-theme="light"] .ext-tag.ext-all:hover { background: rgba(22, 163, 74, 0.2); }
+
 
 /* Stats Panel */
 .stats-panel {
@@ -221,18 +245,10 @@ input[type="checkbox"] {
 .fa-folder { color: #a1a1aa; font-size: 14px; }
 .fa-file { color: var(--text-muted); font-size: 13px; }
 .line-badge {
-    font-size: 11px;
-    color: var(--text-muted);
-    background: var(--badge-bg);
-    padding: 2px 6px;
-    border-radius: 4px;
-    margin-left: 8px;
-    min-width: 30px;
-    text-align: center;
-    white-space: nowrap;
-    font-family: 'Consolas', monospace;
+    font-size: 11px; color: var(--text-muted); background: var(--badge-bg);
+    padding: 2px 6px; border-radius: 4px; margin-left: 8px;
+    min-width: 30px; text-align: center; white-space: nowrap; font-family: 'Consolas', monospace;
 }
-
 .ascii-tree {
     font-family: 'Consolas', 'Monaco', monospace; white-space: pre; color: var(--text);
     font-size: 12px; line-height: 1.3; margin: 0;
@@ -268,33 +284,12 @@ input[type="checkbox"] {
 
 /* --- СТИЛИ ДЛЯ СКРЫТЫХ ФАЙЛОВ --- */
 .divider-vertical {
-    width: 1px;
-    height: 20px;
-    background-color: var(--border);
-    margin: 0 5px;
+    width: 1px; height: 20px; background-color: var(--border); margin: 0 5px;
 }
-
-/* По умолчанию скрываем элементы с классом .is-ignored */
-.file-list-container:not(.show-ignored) .is-ignored {
-    display: none !important;
-}
-
-/* Визуальное оформление скрытых файлов, когда они показаны */
-.is-ignored > .selection-item > .item-name {
-    opacity: 0.5;
-    font-style: italic;
-}
-
-/* Надпись "скрыто" рядом с файлом */
+.file-list-container:not(.show-ignored) .is-ignored { display: none !important; }
+.is-ignored > .selection-item > .item-name { opacity: 0.5; font-style: italic; }
 .is-ignored > .selection-item > .item-name::after {
-    content: 'скрыто';
-    font-size: 9px;
-    color: var(--text-muted);
-    margin-left: 8px;
-    background: var(--hover-bg);
-    padding: 2px 5px;
-    border-radius: 4px;
-    vertical-align: middle;
-    font-family: 'Segoe UI', sans-serif;
-    font-style: normal;
+    content: 'скрыто'; font-size: 9px; color: var(--text-muted); margin-left: 8px;
+    background: var(--hover-bg); padding: 2px 5px; border-radius: 4px;
+    vertical-align: middle; font-family: 'Segoe UI', sans-serif; font-style: normal;
 }

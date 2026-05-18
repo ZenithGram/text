@@ -1,8 +1,5 @@
 /* --- CONFIGURATION --- */
-// ЖЕСТКИЕ игноры - только то, что намертво "повесит" браузер (в DOM не попадает вообще)
 const HARD_IGNORED = ['.git', 'node_modules'];
-
-// МЯГКИЕ игноры - попадают в интерфейс в раздел "Скрытые" (серые, галочка снята)
 const IGNORED_FOLDERS = [
     '.idea', '.vscode', '.github', '.gitlab', 'vendor', 'bower_components',
     'dist', 'build', 'out', 'target', 'bin', 'obj', 'coverage', '__pycache__',
@@ -28,9 +25,6 @@ let isZipMode = false;
 let githubRepoMeta = null;
 let statsCache = {};
 let currentZipName = "";
-// Для умного восстановления выбора
-let lastLoadedPaths = new Set();
-let lastSelectedPaths = new Set();
 
 /* --- THEME TOGGLE --- */
 document.addEventListener('DOMContentLoaded', () => {
@@ -43,6 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
         updateThemeIcon(false);
     }
 });
+
 function toggleTheme() {
     const html = document.documentElement;
     if (html.getAttribute('data-theme') === 'light') {
@@ -55,6 +50,7 @@ function toggleTheme() {
         updateThemeIcon(true);
     }
 }
+
 function updateThemeIcon(isLight) {
     const btn = document.getElementById('theme-toggle');
     btn.innerHTML = isLight ? '<i class="fa-solid fa-moon"></i>' : '<i class="fa-solid fa-sun"></i>';
@@ -62,9 +58,6 @@ function updateThemeIcon(isLight) {
 
 /* --- TABS --- */
 function switchTab(tab) {
-    lastLoadedPaths.clear();
-    lastSelectedPaths.clear();
-
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
     if (tab === 'github') {
@@ -78,47 +71,28 @@ function switchTab(tab) {
 
 /* --- HELPERS --- */
 function isHardIgnored(path) {
-    const parts = path.split('/');
-    return parts.some(p => HARD_IGNORED.includes(p));
+    return path.split('/').some(p => HARD_IGNORED.includes(p));
 }
 
-// Проверяет, должен ли файл быть "скрытым" (серым) в интерфейсе
 function checkIfHidden(name, fullPath, isFolder) {
     const parts = fullPath.split('/');
-    // 1. Папки
     for (const part of parts) {
         if (IGNORED_FOLDERS.includes(part)) return true;
     }
-    // 2. Файлы
     if (!isFolder) {
         if (IGNORED_FILES.includes(name)) return true;
-
         const lastDotIndex = name.lastIndexOf('.');
-
-        // Файлы без расширения (например, hosts, Makefile) больше НЕ скрываем!
-        if (lastDotIndex === -1) {
-            return false;
-        }
-
+        if (lastDotIndex === -1) return false;
         const lowerName = name.toLowerCase();
         const ext = lowerName.substring(lastDotIndex);
-
-        // Оставляем системные конфиги (.env, .gitignore) и файлы, чьё полное имя есть в списке (dockerfile, .env.example)
-        if (ALLOWED_EXTENSIONS.includes(lowerName) || lowerName === '.gitignore' || lowerName === '.env') {
-            return false;
-        }
-
-        // Скрываем, если расширение не входит в список разрешенных
-        if (!ALLOWED_EXTENSIONS.includes(ext)) {
-            return true;
-        }
+        if (ALLOWED_EXTENSIONS.includes(lowerName) || lowerName === '.gitignore' || lowerName === '.env') return false;
+        if (!ALLOWED_EXTENSIONS.includes(ext)) return true;
     }
     return false;
 }
 
 /* --- LOAD DATA --- */
 async function fetchGitHubRepo() {
-    saveCurrentSelection();
     const urlInput = document.getElementById('repoUrl').value.trim();
     let token = document.getElementById('repoToken').value.trim();
     if (!urlInput) return alert("Введите URL репозитория");
@@ -140,10 +114,7 @@ async function fetchGitHubRepo() {
         const treeData = await treeRes.json();
         if (treeData.truncated) alert("Репозиторий очень большой, показаны не все файлы.");
 
-        allPaths = treeData.tree
-            .filter(item => item.type === 'blob' && !isHardIgnored(item.path))
-            .map(item => item.path);
-
+        allPaths = treeData.tree.filter(item => item.type === 'blob' && !isHardIgnored(item.path)).map(item => item.path);
         if (allPaths.length === 0) return alert("Пусто.");
         initializeTree(allPaths);
     } catch (e) {
@@ -154,7 +125,6 @@ async function fetchGitHubRepo() {
 document.getElementById('folderInput').addEventListener('change', (e) => {
     const files = e.target.files;
     if (files.length === 0) return;
-    saveCurrentSelection();
     allPaths = [];
     globalFileList = Array.from(files);
     githubRepoMeta = null; isZipMode = false;
@@ -170,8 +140,8 @@ document.getElementById('folderInput').addEventListener('change', (e) => {
 document.getElementById('zipInput').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    saveCurrentSelection();
     currentZipName = file.name.replace(/\.[^/.]+$/, "");
+
     try {
         const zip = new JSZip();
         const zipContent = await zip.loadAsync(file);
@@ -208,20 +178,26 @@ function initializeTree(paths) {
     });
     container.appendChild(rootUl);
 
+    // Восстановление из LocalStorage
     const allFileCheckboxes = container.querySelectorAll('input[type="checkbox"][data-type="file"]');
+    const savedPaths = JSON.parse(localStorage.getItem('fileTree_selectedPaths') || "null");
+    const savedAllPaths = JSON.parse(localStorage.getItem('fileTree_allPaths') || "[]");
 
-    if (lastLoadedPaths.size > 0) {
+    const currentAllPaths = Array.from(allFileCheckboxes).map(cb => cb.dataset.path);
+    const savedAllSet = new Set(savedAllPaths);
+
+    // Эвристика: если открываемая директория имеет пересечения с прошлой - восстанавливаем.
+    const isSameProject = currentAllPaths.some(p => savedAllSet.has(p));
+
+    if (savedPaths !== null && isSameProject) {
+        const savedSet = new Set(savedPaths);
         allFileCheckboxes.forEach(cb => {
-            const path = cb.dataset.path;
-            if (lastLoadedPaths.has(path)) {
-                cb.checked = lastSelectedPaths.has(path);
-            }
+            cb.checked = savedSet.has(cb.dataset.path);
         });
     }
 
     allFileCheckboxes.forEach(cb => updateAncestors(cb));
 
-    renderExtensions(paths);
     document.getElementById('selection-section').classList.remove('hidden');
     document.getElementById('result-section').classList.add('hidden');
     updateSelectionCount();
@@ -253,16 +229,12 @@ function createNode(name, data, parentPath, parentChecked) {
     const li = document.createElement('li');
     const fullPath = parentPath ? `${parentPath}/${name}` : name;
     const isFolder = data !== null;
-
     const isHiddenCategory = checkIfHidden(name, fullPath, isFolder);
-    if (isHiddenCategory) {
-        li.classList.add('is-ignored');
-    }
+
+    if (isHiddenCategory) li.classList.add('is-ignored');
 
     let isChecked = parentChecked;
-    if (isHiddenCategory) {
-        isChecked = false;
-    }
+    if (isHiddenCategory) isChecked = false;
 
     const div = document.createElement('div');
     div.className = 'selection-item';
@@ -285,7 +257,6 @@ function createNode(name, data, parentPath, parentChecked) {
     checkbox.dataset.path = fullPath;
     checkbox.dataset.type = isFolder ? 'folder' : 'file';
     checkbox.checked = isChecked;
-
     checkbox.onclick = (e) => {
         const currentState = e.target.checked;
         if (isFolder) {
@@ -323,6 +294,7 @@ function createNode(name, data, parentPath, parentChecked) {
 function updateAncestors(el) {
     const parentUl = el.closest('ul');
     if (!parentUl || parentUl.classList.contains('selection-tree')) return;
+
     const parentLi = parentUl.parentElement;
     const parentCheckbox = parentLi.querySelector(':scope > .selection-item > input[type="checkbox"]');
     if (!parentCheckbox) return;
@@ -330,6 +302,7 @@ function updateAncestors(el) {
     const siblings = Array.from(parentUl.children).map(li =>
         li.querySelector(':scope > .selection-item > input[type="checkbox"]')
     );
+
     const allChecked = siblings.every(cb => cb.checked);
     const allUnchecked = siblings.every(cb => !cb.checked);
     const someIndeterminate = siblings.some(cb => cb.indeterminate);
@@ -348,18 +321,28 @@ function updateAncestors(el) {
 }
 
 function updateSelectionCount() {
-    const count = document.querySelectorAll('input[type="checkbox"][data-type="file"]:checked').length;
-    document.getElementById('file-counter').innerText = count;
+    const fileBoxes = document.querySelectorAll('input[type="checkbox"][data-type="file"]');
+    const checkedBoxes = Array.from(fileBoxes).filter(cb => cb.checked);
+
+    document.getElementById('file-counter').innerText = checkedBoxes.length;
+
+    updateExtensionsUI();
+
+    // Сохранение в LocalStorage (Защита от потери при F5)
+    const checkedPaths = checkedBoxes.map(cb => cb.dataset.path);
+    const allPathsList = Array.from(fileBoxes).map(cb => cb.dataset.path);
+    localStorage.setItem('fileTree_selectedPaths', JSON.stringify(checkedPaths));
+    localStorage.setItem('fileTree_allPaths', JSON.stringify(allPathsList));
 }
 
 /* --- TOGGLES & ACTIONS --- */
 function toggleIgnoredView() {
     document.getElementById('file-list').classList.toggle('show-ignored');
+    updateExtensionsUI(); // Перерисовываем теги в зависимости от видимости скрытых
 }
 
 function toggleAll(state) {
     const isShowingIgnored = document.getElementById('file-list').classList.contains('show-ignored');
-
     document.querySelectorAll('#file-list input[type="checkbox"]').forEach(cb => {
         if (!isShowingIgnored && cb.closest('.is-ignored')) return;
         cb.checked = state;
@@ -371,57 +354,77 @@ function toggleAll(state) {
     updateSelectionCount();
 }
 
-function renderExtensions(paths) {
+function updateExtensionsUI() {
+    const isShowingIgnored = document.getElementById('file-list').classList.contains('show-ignored');
+    const allFileCheckboxes = document.querySelectorAll('input[type="checkbox"][data-type="file"]');
+    const counts = {};
+
+    allFileCheckboxes.forEach(cb => {
+        // Пропускаем те, что скрыты и не отображаются
+        if (!isShowingIgnored && cb.closest('.is-ignored')) return;
+
+        const path = cb.dataset.path;
+        const isChecked = cb.checked;
+        const name = path.split('/').pop();
+
+        let ext = 'no-ext';
+        if (name.includes('.')) {
+            ext = '.' + name.split('.').pop();
+        }
+
+        if (!counts[ext]) counts[ext] = { total: 0, checked: 0 };
+        counts[ext].total++;
+        if (isChecked) counts[ext].checked++;
+    });
+
     const container = document.getElementById('extension-list');
     container.innerHTML = '';
-    const counts = {};
-    paths.forEach(p => {
-        const name = p.split('/').pop();
-        if (name.includes('.')) {
-            const ext = '.' + name.split('.').pop();
-            counts[ext] = (counts[ext] || 0) + 1;
-        } else {
-            counts['no-ext'] = (counts['no-ext'] || 0) + 1;
-        }
-    });
-    if (Object.keys(counts).length === 0) {
+
+    const activeExtensions = Object.keys(counts);
+    if (activeExtensions.length === 0) {
         document.getElementById('extension-container').classList.add('hidden');
         return;
     }
+
     document.getElementById('extension-container').classList.remove('hidden');
-    Object.entries(counts).sort((a, b) => b[1] - a[1]).forEach(([ext, count]) => {
+
+    activeExtensions.sort((a, b) => counts[b].total - counts[a].total).forEach(ext => {
+        const data = counts[ext];
         const tag = document.createElement('div');
         tag.className = 'ext-tag';
-        tag.innerHTML = `${ext} <span class="ext-count">${count}</span>`;
+
+        if (data.checked === 0) tag.classList.add('ext-none');
+        else if (data.checked === data.total) tag.classList.add('ext-all');
+        else tag.classList.add('ext-partial');
+
+        tag.innerHTML = `${ext} <span class="ext-count">${data.checked}/${data.total}</span>`;
         tag.onclick = () => toggleByExtension(ext);
         container.appendChild(tag);
     });
 }
 
 function toggleByExtension(ext) {
+    const isShowingIgnored = document.getElementById('file-list').classList.contains('show-ignored');
     const allFileCheckboxes = Array.from(document.querySelectorAll('input[type="checkbox"][data-type="file"]'));
+
     const targets = allFileCheckboxes.filter(cb => {
+        if (!isShowingIgnored && cb.closest('.is-ignored')) return false;
         const path = cb.dataset.path;
         if (ext === 'no-ext') return !path.split('/').pop().includes('.');
         return path.endsWith(ext);
     });
+
     if (targets.length === 0) return;
+
     const isAllSelected = targets.every(cb => cb.checked);
     const newState = !isAllSelected;
+
     targets.forEach(cb => {
         cb.checked = newState;
         updateAncestors(cb);
     });
-    updateSelectionCount();
-}
 
-/* --- SAVE SELECTION (MEMORY) --- */
-function saveCurrentSelection() {
-    const fileBoxes = document.querySelectorAll('input[type="checkbox"][data-type="file"]');
-    if (fileBoxes.length > 0) {
-        lastLoadedPaths = new Set(Array.from(fileBoxes).map(cb => cb.dataset.path));
-        lastSelectedPaths = new Set(Array.from(fileBoxes).filter(cb => cb.checked).map(cb => cb.dataset.path));
-    }
+    updateSelectionCount();
 }
 
 /* --- GENERATE VIEW --- */
@@ -429,10 +432,13 @@ let finalResultObject = {};
 function generateTree() {
     const checkedFiles = Array.from(document.querySelectorAll('input[type="checkbox"][data-type="file"]:checked'))
         .map(cb => cb.dataset.path);
+
     if (checkedFiles.length === 0) return alert("Ничего не выбрано!");
     finalResultObject = buildTreeObject(checkedFiles);
+
     renderCurrentView();
     document.getElementById('result-section').classList.remove('hidden');
+
     if (!document.getElementById('result-section').classList.contains('visible-once')) {
         setTimeout(() => document.getElementById('result-section').scrollIntoView({ behavior: 'smooth' }), 100);
         document.getElementById('result-section').classList.add('visible-once');
@@ -443,6 +449,7 @@ function renderCurrentView() {
     const mode = document.getElementById('view-mode').value;
     const container = document.getElementById('tree-output-container');
     container.innerHTML = '';
+
     if (mode === 'vertical') {
         container.innerHTML = `<div class="vertical-tree">${renderVerticalRecursive(finalResultObject, '', true)}</div>`;
     } else {
@@ -457,36 +464,41 @@ function renderVerticalRecursive(node, currentPath, isRoot) {
     if (!node) return '';
     let html = '<ul>';
     const keys = Object.keys(node).sort(sortItems(node));
+
     keys.forEach(key => {
         const isFolder = node[key] !== null;
         const fullPath = currentPath ? `${currentPath}/${key}` : key;
         const icon = isFolder ? '<i class="fa-solid fa-folder"></i>' : '<i class="fa-regular fa-file"></i>';
+
         let statHtml = '';
-        let stats = { lines: 0, code: 0 };
+        let stats = { chars: 0, code: 0 };
+
         if (!isFolder && statsCache[fullPath]) stats = statsCache[fullPath];
         else if (isFolder) stats = calculateFolderStats(node[key], fullPath);
 
-        if (stats.lines > 0) {
-            statHtml = `<span class="line-badge" title="Всего строк / Чистый код">${stats.lines} / ${stats.code}</span>`;
+        if (stats.chars > 0) {
+            statHtml = `<span class="line-badge" title="Символов / Строк кода">${stats.chars} / ${stats.code}</span>`;
         }
+
         html += `<li><div class="tree-row">${icon} <span>${key}</span> ${statHtml}</div>${isFolder ? renderVerticalRecursive(node[key], fullPath, false) : ''}</li>`;
     });
     return html + '</ul>';
 }
 
 function calculateFolderStats(node, currentPath) {
-    let sum = { lines: 0, code: 0 };
+    let sum = { chars: 0, code: 0 };
     if (!node) return sum;
+
     Object.keys(node).forEach(key => {
         const fullPath = currentPath ? `${currentPath}/${key}` : key;
         if (node[key] === null) {
             if (statsCache[fullPath]) {
-                sum.lines += (statsCache[fullPath].lines || 0);
+                sum.chars += (statsCache[fullPath].chars || 0);
                 sum.code += (statsCache[fullPath].code || 0);
             }
         } else {
             const childStats = calculateFolderStats(node[key], fullPath);
-            sum.lines += childStats.lines;
+            sum.chars += childStats.chars;
             sum.code += childStats.code;
         }
     });
@@ -496,6 +508,7 @@ function calculateFolderStats(node, currentPath) {
 function renderASCIIRecursive(node, prefix = "") {
     let result = "";
     const keys = Object.keys(node).sort(sortItems(node));
+
     keys.forEach((key, index) => {
         const isLast = index === keys.length - 1;
         const connector = isLast ? "└── " : "├── ";
@@ -515,13 +528,16 @@ function copyToClipboard() {
 async function processFiles(mode) {
     const checkedFiles = Array.from(document.querySelectorAll('input[type="checkbox"][data-type="file"]:checked')).map(cb => cb.dataset.path);
     if (checkedFiles.length === 0) return alert("Ничего не выбрано!");
+
     if (githubRepoMeta && checkedFiles.length > 50 && mode === 'download') {
         if (!confirm(`Выбрано ${checkedFiles.length} файлов. Скачивание может занять время. Продолжить?`)) return;
     }
+
     const statusDiv = document.getElementById('loading-status');
     const statusText = document.getElementById('loading-text');
     statusDiv.classList.remove('hidden');
-    let totalLinesCount = 0, codeLinesCount = 0, outputContent = "";
+
+    let totalCharsCount = 0, codeLinesCount = 0, outputContent = "";
 
     if (mode === 'download') {
         outputContent += "PROJECT DIRECTORY STRUCTURE:\n" + renderASCIIRecursive(buildTreeObject(checkedFiles)) + "\n\n";
@@ -551,10 +567,12 @@ async function processFiles(mode) {
 
             if (fetchSuccess) {
                 const lines = content.split('\n');
-                const fileTotal = lines.length;
+                const fileChars = content.length;
                 const fileCode = lines.filter(line => line.trim() !== '').length;
-                totalLinesCount += fileTotal; codeLinesCount += fileCode;
-                statsCache[path] = { lines: fileTotal, code: fileCode };
+
+                totalCharsCount += fileChars;
+                codeLinesCount += fileCode;
+                statsCache[path] = { chars: fileChars, code: fileCode };
 
                 if (mode === 'download') {
                     const ext = path.includes('.') ? '.' + path.split('.').pop().toLowerCase() : '';
@@ -562,11 +580,11 @@ async function processFiles(mode) {
                         optimizeCode(content, ext, document.getElementById('opt-remove-comments').checked, document.getElementById('opt-remove-empty').checked) + "\n\n";
                 }
             } else {
-                statsCache[path] = { lines: 0, code: 0 };
+                statsCache[path] = { chars: 0, code: 0 };
             }
         }
 
-        document.getElementById('stat-total-lines').innerText = totalLinesCount.toLocaleString();
+        document.getElementById('stat-total-chars').innerText = totalCharsCount.toLocaleString();
         document.getElementById('stat-code-lines').innerText = codeLinesCount.toLocaleString();
 
         if (mode === 'stats') generateTree();
@@ -577,6 +595,7 @@ async function processFiles(mode) {
             else if (globalFileList && globalFileList.length > 0) filename = `${globalFileList[0].webkitRelativePath.split('/')[0]}.txt`;
             downloadAsFile(filename, outputContent);
         }
+
         statusText.innerText = "Готово!";
         setTimeout(() => statusDiv.classList.add('hidden'), 1000);
     } catch (e) {
