@@ -6,7 +6,6 @@
     <title>File Tree & Bundle Generator</title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Добавлена библиотека для работы с ZIP -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </head>
 <body>
@@ -19,13 +18,11 @@
         <p>GitHub / Local / ZIP &rarr; Visual Tree & Bundle</p>
     </header>
 
-    <!-- 1. СЕКЦИЯ ВВОДА -->
     <div class="card input-section">
         <div class="tabs">
             <button class="tab-btn active" onclick="switchTab('github')"><i class="fab fa-github"></i> GitHub Repo</button>
             <button class="tab-btn" onclick="switchTab('local')"><i class="fa-regular fa-folder-open"></i> Local / Zip</button>
         </div>
-
         <div id="github-panel" class="panel active">
             <div class="input-group">
                 <input type="text" id="repoUrl" placeholder="https://github.com/username/repo">
@@ -37,10 +34,8 @@
             </small>
             <button class="action-btn" onclick="fetchGitHubRepo()">📥 Загрузить список файлов</button>
         </div>
-
         <div id="local-panel" class="panel">
             <div class="local-actions">
-                <!-- Загрузка папки -->
                 <div class="upload-box">
                     <input type="file" id="folderInput" webkitdirectory directory multiple>
                     <div class="upload-label">
@@ -48,7 +43,6 @@
                         <span>Выбрать папку</span>
                     </div>
                 </div>
-                <!-- Загрузка ZIP -->
                 <div class="upload-box">
                     <input type="file" id="zipInput" accept=".zip">
                     <div class="upload-label">
@@ -60,30 +54,34 @@
         </div>
     </div>
 
-    <!-- 2. СЕКЦИЯ ВЫБОРА И ДЕЙСТВИЙ -->
     <div id="selection-section" class="card hidden">
         <div class="section-header">
             <h2>📂 Выберите файлы <span id="file-counter" class="counter-badge">0</span></h2>
-            <div class="global-actions">
+            <div class="global-actions" style="display: flex; gap: 10px; align-items: center;">
                 <button onclick="toggleAll(true)" class="small-btn">Все</button>
                 <button onclick="toggleAll(false)" class="small-btn">Ничего</button>
+                <div class="divider-vertical"></div>
+                <!-- ДОБАВЛЕН ПЕРЕКЛЮЧАТЕЛЬ СКРЫТЫХ ФАЙЛОВ -->
+                <label class="toggle-control" title="Показать скрытые системные папки (vendor, build, неизвестные форматы)">
+                    <input type="checkbox" id="toggle-ignored-view" onchange="toggleIgnoredView()">
+                    <span class="toggle-track" style="width: 32px; height: 18px;"><span class="toggle-indicator" style="width: 12px; height: 12px; top: 2px; left: 2px;"></span></span>
+                    <span class="toggle-text" style="font-size: 11px;"><i class="fa-solid fa-eye-slash" style="font-size:10px;"></i> Скрытые</span>
+                </label>
             </div>
         </div>
-
         <div id="extension-container" class="extension-bar hidden">
             <span class="filter-label">Типы:</span>
             <div id="extension-list" class="tags-wrapper"></div>
         </div>
 
+        <!-- КОНТЕЙНЕР ДЕРЕВА -->
         <div id="file-list" class="file-list-container"></div>
 
         <button class="secondary-btn full-width-btn" style="margin-top: 15px;" onclick="generateTree()">
             <i class="fa-solid fa-eye"></i> Показать визуальное дерево
         </button>
-
         <div class="divider"></div>
 
-        <!-- СТАТИСТИКА И СКАЧИВАНИЕ -->
         <div class="stats-panel">
             <div class="stats-info">
                 <div class="stat-item">
@@ -96,12 +94,10 @@
                 </div>
             </div>
             <div class="stats-actions">
-                <!-- Кнопка пересчета теперь обновляет и дерево -->
                 <button class="secondary-btn" onclick="processFiles('stats')">
                     <i class="fa-solid fa-calculator"></i> Пересчитать размеры
                 </button>
             </div>
-
             <div class="optimization-panel">
                 <div class="opt-header">
                     <i class="fa-solid fa-sliders"></i> Оптимизация
@@ -120,18 +116,15 @@
                 </div>
             </div>
         </div>
-
         <button class="primary-btn download-btn" onclick="processFiles('download')">
             <i class="fa-solid fa-file-arrow-down"></i> Скачать всё в один файл (.txt)
         </button>
-
         <div id="loading-status" class="status-bar hidden">
             <i class="fa-solid fa-spinner fa-spin"></i>
             <span id="loading-text">Обработка...</span>
         </div>
     </div>
 
-    <!-- 3. СЕКЦИЯ РЕЗУЛЬТАТА -->
     <div id="result-section" class="card hidden">
         <div class="section-header">
             <h2>Результат</h2>

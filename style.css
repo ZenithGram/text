@@ -265,3 +265,36 @@ input[type="checkbox"] {
 .toggle-text { font-size: 13px; color: var(--text); display: flex; align-items: center; gap: 6px; }
 .toggle-text i { color: var(--text-muted); font-size: 12px; }
 .toggle-control input:checked ~ .toggle-text i { color: var(--success); }
+
+/* --- СТИЛИ ДЛЯ СКРЫТЫХ ФАЙЛОВ --- */
+.divider-vertical {
+    width: 1px;
+    height: 20px;
+    background-color: var(--border);
+    margin: 0 5px;
+}
+
+/* По умолчанию скрываем элементы с классом .is-ignored */
+.file-list-container:not(.show-ignored) .is-ignored {
+    display: none !important;
+}
+
+/* Визуальное оформление скрытых файлов, когда они показаны */
+.is-ignored > .selection-item > .item-name {
+    opacity: 0.5;
+    font-style: italic;
+}
+
+/* Надпись "скрыто" рядом с файлом */
+.is-ignored > .selection-item > .item-name::after {
+    content: 'скрыто';
+    font-size: 9px;
+    color: var(--text-muted);
+    margin-left: 8px;
+    background: var(--hover-bg);
+    padding: 2px 5px;
+    border-radius: 4px;
+    vertical-align: middle;
+    font-family: 'Segoe UI', sans-serif;
+    font-style: normal;
+}
